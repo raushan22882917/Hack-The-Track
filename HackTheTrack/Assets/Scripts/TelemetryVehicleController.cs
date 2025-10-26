@@ -2,7 +2,6 @@ using Dreamteck.Splines;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using static TMPro.SpriteAssetUtilities.TexturePacker_JsonArray;
 
 public class TelemetryVehicleController : MonoBehaviour {
     public string VehicleId;
@@ -27,7 +26,7 @@ public class TelemetryVehicleController : MonoBehaviour {
     private int currentGear;
 
     private float currentLapDistance;
-    //private float lastLapDistance;
+    private float lastLapDistance;
 
     private int currentLapNumber;
     private int lastLapNumber;
@@ -46,8 +45,8 @@ public class TelemetryVehicleController : MonoBehaviour {
         if (samples.ContainsKey("gear"))
             currentGear = Convert.ToInt16(samples["gear"]);
 
-        if (samples.ContainsKey("lap"))
-            currentLapNumber = Convert.ToInt16(samples["lap"]);
+        //if (samples.ContainsKey("lap"))
+        //    currentLapNumber = Convert.ToInt16(samples["lap"]);
 
         if (samples.ContainsKey("VBOX_Lat_Min") && samples.ContainsKey("VBOX_Long_Minutes")) {
             double lat = Convert.ToDouble(samples["VBOX_Lat_Min"]);
@@ -59,6 +58,12 @@ public class TelemetryVehicleController : MonoBehaviour {
 
         if (samples.ContainsKey("Laptrigger_lapdist_dls")) {
             currentLapDistance = (float)Convert.ToDouble(samples["Laptrigger_lapdist_dls"]);
+
+            if (currentLapDistance < lastLapDistance) {
+                currentLapNumber++;
+            }
+
+            lastLapDistance = currentLapDistance;
         }
 
         if (samples.ContainsKey("speed")) {
@@ -113,7 +118,7 @@ public class TelemetryVehicleController : MonoBehaviour {
         lapSpline.transform.SetParent(null);
 
         if (UseSingleLapObjects) {
-            lapSpline.name = $"{VehicleId} - {currentLapNumber + 1} - Last Lap";
+            lapSpline.name = $"{VehicleId} - Lap {currentLapNumber + 1}";
         } else {
             lapSpline.name = $"{VehicleId} - Full Race";
         }

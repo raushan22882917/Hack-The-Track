@@ -18,7 +18,12 @@ KEEP_NAMES = {
     "VBOX_Lat_Min",
     "VBOX_Long_Minutes",
     "Laptrigger_lapdist_dls",
-    "speed"
+    "speed",
+    "accx_can",
+    "accy_can",
+    "pbrake_f",
+    "pbrake_r",
+    "Steering_Angle"
 }
 
 def latlon_to_xy(lat, lon):
@@ -33,6 +38,9 @@ def directional_filter(df):
     lon_rows = df[df["telemetry_name"] == "VBOX_Long_Minutes"].reset_index(drop=True)
 
     if len(lat_rows) != len(lon_rows):
+        return df
+
+    if len(lat_rows) < 3:
         return df
 
     filtered_indices = [0, 1, 2]
@@ -61,13 +69,13 @@ for chunk in pd.read_csv(INPUT_FILE, chunksize=CHUNK_SIZE):
     chunk = chunk.dropna(subset=["meta_time"])
     chunk = chunk[chunk["telemetry_name"].isin(KEEP_NAMES)]
 
-    # Preserve lap number during aggregation
+    # Aggregate duplicates without lap
     chunk = (
-        chunk.groupby(["meta_time", "vehicle_id", "telemetry_name", "lap"], as_index=False)
+        chunk.groupby(["meta_time", "vehicle_id", "telemetry_name"], as_index=False)
              .agg({"telemetry_value": "median"})
     )
 
-    chunk["meta_time"] = chunk["meta_time"].dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    chunk["meta_time"] = chunk["meta_time"].dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ").str[:-3] + "Z"
 
     for vid, df_vid in chunk.groupby("vehicle_id"):
         if vid not in vehicle_data:
@@ -83,30 +91,11 @@ for vid, parts in vehicle_data.items():
     df = pd.concat(parts, ignore_index=True)
     df = df.sort_values("meta_time")
 
-    # Extract lap transitions
-    lap_transitions = (
-        df.dropna(subset=["lap"])
-          .drop_duplicates(subset=["lap"])
-          [["meta_time", "lap"]]
-          .sort_values("meta_time")
-    )
-
-    # Create lap telemetry rows
-    lap_rows = pd.DataFrame({
-        "meta_time": lap_transitions["meta_time"],
-        "telemetry_name": "lap",
-        "telemetry_value": lap_transitions["lap"].astype("Int64")
-    })
-
-    # Drop lap column from main telemetry
-    df = df.drop(columns=["lap", "vehicle_id"], errors="ignore")
-
-    # Combine lap rows with telemetry
-    df = pd.concat([df, lap_rows], ignore_index=True)
-    df = df.sort_values("meta_time")
+    # Drop any stray lap column if present
+    df = df.drop(columns=["lap"], errors="ignore")
 
     out_path = os.path.join(OUTPUT_DIR, f"{vid}.csv")
     df.to_csv(out_path, index=False)
-    print(f"✅ Exported {vid} → {out_path} ({len(df)} rows including lap markers)")
+    print(f"✅ Exported {vid} → {out_path} ({len(df)} rows)")
 
-print("All vehicles processed with lap markers as separate telemetry entries.")
+print("All vehicles processed without lap markers.")

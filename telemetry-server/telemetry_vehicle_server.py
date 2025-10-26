@@ -6,7 +6,7 @@ import glob, os
 # CONFIG
 INPUT_DIR = "logs/vehicles"   # directory with per-vehicle CSVs
 PORT = 8765
-TARGET_HZ = 100
+TARGET_HZ = 60
 UNLIMITED_MODE = False   # ✅ set True to send as fast as possible
 SEND_INTERVAL = 1.0 / TARGET_HZ if not UNLIMITED_MODE else 0
 
