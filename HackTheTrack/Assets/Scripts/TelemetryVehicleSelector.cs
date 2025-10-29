@@ -31,4 +31,11 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             }
         }
     }
+
+    public void Pause() {
+
+    }
+
+    public void Play() {
+    }
 }

@@ -39,7 +39,6 @@ def directional_filter(df):
 
     if len(lat_rows) != len(lon_rows):
         return df
-
     if len(lat_rows) < 3:
         return df
 
@@ -67,17 +66,37 @@ print("Processing CSV in chunks with filtering and cleanup...")
 for chunk in pd.read_csv(INPUT_FILE, chunksize=CHUNK_SIZE):
     chunk["meta_time"] = pd.to_datetime(chunk["meta_time"], utc=True, errors="coerce")
     chunk = chunk.dropna(subset=["meta_time"])
+
+    # Extract lap changes only
+    lap_changes = (
+        chunk[["meta_time", "vehicle_id", "lap"]]
+        .dropna(subset=["lap"])
+        .sort_values(["vehicle_id", "meta_time"])
+        .drop_duplicates(subset=["vehicle_id", "lap"])
+        .copy()
+    )
+    lap_changes["telemetry_name"] = "lap"
+    lap_changes["telemetry_value"] = lap_changes["lap"]
+    lap_changes = lap_changes.drop(columns=["lap"])
+
+    # Filter telemetry signals
     chunk = chunk[chunk["telemetry_name"].isin(KEEP_NAMES)]
 
-    # Aggregate duplicates without lap
+    # Aggregate duplicates
     chunk = (
         chunk.groupby(["meta_time", "vehicle_id", "telemetry_name"], as_index=False)
              .agg({"telemetry_value": "median"})
     )
 
-    chunk["meta_time"] = chunk["meta_time"].dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ").str[:-3] + "Z"
+    # Format timestamps
+    chunk["meta_time"] = pd.to_datetime(chunk["meta_time"], utc=True, errors="coerce")
+    lap_changes["meta_time"] = pd.to_datetime(lap_changes["meta_time"], utc=True, errors="coerce")
 
-    for vid, df_vid in chunk.groupby("vehicle_id"):
+    # Combine telemetry and lap rows
+    combined = pd.concat([chunk, lap_changes], ignore_index=True)
+    combined["meta_time"] = combined["meta_time"].dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ").str[:-3] + "Z"
+
+    for vid, df_vid in combined.groupby("vehicle_id"):
         if vid not in vehicle_data:
             vehicle_data[vid] = []
 
@@ -91,11 +110,8 @@ for vid, parts in vehicle_data.items():
     df = pd.concat(parts, ignore_index=True)
     df = df.sort_values("meta_time")
 
-    # Drop any stray lap column if present
-    df = df.drop(columns=["lap"], errors="ignore")
-
     out_path = os.path.join(OUTPUT_DIR, f"{vid}.csv")
     df.to_csv(out_path, index=False)
     print(f"✅ Exported {vid} → {out_path} ({len(df)} rows)")
 
-print("All vehicles processed without lap markers.")
+print("All vehicles processed with lap telemetry injected only on change.")

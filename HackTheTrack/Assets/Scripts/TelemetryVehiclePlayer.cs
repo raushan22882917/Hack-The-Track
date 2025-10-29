@@ -2,13 +2,13 @@ using Dreamteck.Splines;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using static Dreamteck.Splines.FollowerSpeedModifier;
 
 public class TelemetryVehiclePlayer : MonoBehaviour {
     public string VehicleId;
     public SplinePositioner Positioner;
 
     public bool IsInterpolationActive;
+    public bool IsPaused;
 
     public TelemetryUI TelemetryDisplay;
 
@@ -34,7 +34,7 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     private int currentLapNumber = 2;
 
     private float currentLapDistance;
-    private float lastLapDistance;
+    //private float lastLapDistance;
 
     private float currentRPM;
     private float currentThrottle;
@@ -42,6 +42,8 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     private float currentBrakeRear;
     private float currentSteeringAngle;
     private int currentGear;
+
+    private DateTime currentDateTime;
 
     private void Start() {
         var receiver = FindFirstObjectByType<TelemetryReceiver>();
@@ -58,7 +60,7 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     }
 
     private void Update() {
-        if (IsInterpolationActive) {
+        if (!IsPaused && IsInterpolationActive) {
             // --- Simulate acceleration and braking ---
             float throttleInput = Mathf.Clamp01(currentThrottle / 100f); // 0 to 1
             float brakeInput = Mathf.Clamp01((currentBrakeFront + currentBrakeRear) / 20f); // normalize ~0–1 (assuming 10 bar max per axle)
@@ -77,7 +79,7 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
             // Wrap around spline
             if (integratedDistance > splineLength) {
                 integratedDistance -= splineLength;
-                currentLapNumber++;
+                //currentLapNumber++;
             }
 
             Positioner.SetDistance(integratedDistance);
@@ -96,6 +98,8 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     public void ApplyTelemetry(Dictionary<string, object> samples, string timestamp) {
         if (!samples.ContainsKey("Laptrigger_lapdist_dls")) return;
         if (!DateTime.TryParse(timestamp, out DateTime dt)) return;
+
+        currentDateTime = dt;
 
         if (samples.ContainsKey("nmot")) {
             currentRPM = Convert.ToSingle(samples["nmot"]);
@@ -120,6 +124,10 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
             currentGear = Convert.ToInt16(samples["gear"]);
         }
 
+        if (samples.ContainsKey("lap")) {
+            currentLapNumber = Convert.ToInt16(samples["lap"]);
+        }
+
         // Speed is usually in km/h, convert to m/s if needed
         if (samples.ContainsKey("speed")) {
             float speedKph = Convert.ToSingle(samples["speed"]);
@@ -135,12 +143,12 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
             return;
         }
 
-        // Detect lap wrap
-        if (lastLapDistance > 3000 && currentLapDistance < lastLapDistance) {
-            integratedDistance -= splineLength;
-            currentLapNumber++;
-        }
-        lastLapDistance = currentLapDistance;
+        //// Detect lap wrap
+        //if (lastLapDistance > 3000 && currentLapDistance < lastLapDistance) {
+        //    integratedDistance -= splineLength;
+        //    currentLapNumber++;
+        //}
+        //lastLapDistance = currentLapDistance;
 
         // Sanity check: if telemetry lap distance differs too much from our integrated distance, snap
         if (IsInterpolationActive && Mathf.Abs(currentLapDistance - integratedDistance) > DistanceTolerance) {
@@ -194,9 +202,18 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         TelemetryDisplay.CurrentLapDistance.text = currentLapDistance.ToString("F2");
 
         TelemetryDisplay.CurrentLap.text = currentLapNumber.ToString();
+
+        TelemetryDisplay.CurrentTime.text = $"{currentDateTime:dd/MM/yyyy H:mm:ss}";
     }
 
     public void OnTelemetryStreamEnded(string timestamp) {
         Debug.Log($"{VehicleId} telemetry stream ended at {timestamp}");
+    }
+
+    public void OnTelemetryStreamPaused(bool isPause) {
+        Debug.Log($"{VehicleId} telemetry stream paused: {isPause}");
+        IsPaused = isPause;
+
+
     }
 }

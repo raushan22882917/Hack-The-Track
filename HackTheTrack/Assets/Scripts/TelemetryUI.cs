@@ -23,6 +23,7 @@ public class TelemetryUI : MonoBehaviour {
     public TextMeshProUGUI CurrentRPM;
     public TextMeshProUGUI CurrentSpeedSliderValue;
     public Slider CurrentRPMSlider;
+    public TextMeshProUGUI CurrentTime;
 
     private void Start() {
         PlayBtn.onClick.AddListener(Receiver.Play);
