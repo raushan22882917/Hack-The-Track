@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,19 +17,24 @@ public class TelemetryPacket {
 public class TelemetryReceiver : MonoBehaviour {
     public string ServerUrl = "ws://localhost:8765";
     public WeatherManager WeatherManager;
+    public TelemetryVehicleSelector VehicleSelector;
 
     private WebSocket ws;
     private ConcurrentQueue<string> queue = new ConcurrentQueue<string>();
     private Dictionary<string, TelemetryVehiclePlayer> vehicles = new Dictionary<string, TelemetryVehiclePlayer>();
 
-    void Start() {
+    private void Start() {
+        GPSUtils.SetReference(33.530494689941406, -86.62052154541016);
+
         ws = new WebSocket(ServerUrl);
         ws.OnOpen += (s, e) => Debug.Log("Connected to websocket!");
         ws.OnMessage += (s, e) => queue.Enqueue(e.Data);
+        ws.OnError += (s, e) => Debug.LogError($"WebSocket error: {e.Message}");
+        ws.OnClose += (s, e) => Debug.Log($"WebSocket closed: {e.Reason}");
         ws.ConnectAsync();
     }
 
-    void Update() {
+    private void Update() {
         while (queue.TryDequeue(out string json)) {
             var frame = JsonConvert.DeserializeObject<TelemetryPacket>(json);
 
@@ -36,7 +42,7 @@ public class TelemetryReceiver : MonoBehaviour {
 
                 // Apply weather
                 if (WeatherManager != null && frame.weather != null) {
-                    WeatherManager.ApplyWeather(frame.weather);
+                    WeatherManager.ApplyWeather(frame.weather, frame.timestamp);
                 }
 
                 foreach (var kv in frame.vehicles) {
@@ -68,24 +74,53 @@ public class TelemetryReceiver : MonoBehaviour {
         //Debug.Log($"Vehicle with ID {v.VehicleId} registered.");
     }
 
-    // Control
+    // -------- Control --------
     public void Play() {
         foreach (var vehicle in vehicles) {
             vehicle.Value.OnTelemetryStreamPaused(false);
         }
-        Send("{\"type\":\"control\",\"cmd\":\"play\"}");
+        SendControl("play");
     }
 
     public void Pause() {
         foreach (var vehicle in vehicles) {
             vehicle.Value.OnTelemetryStreamPaused(true);
         }
-        Send("{\"type\":\"control\",\"cmd\":\"pause\"}");
+        SendControl("pause");
     }
 
-    public void SetSpeed(float s) => Send($"{{\"type\":\"control\",\"cmd\":\"speed\",\"value\":{s}}}");
+    public void SetSpeed(float s) {
+        var obj = new JObject {
+            ["type"] = "control",
+            ["cmd"] = "speed",
+            ["value"] = s
+        };
+        Send(obj.ToString(Formatting.None));
+    }
 
-    void Send(string j) {
-        if (ws.ReadyState == WebSocketState.Open) ws.Send(j);
+    // ----- Skip commands with vehicle_id -----
+    public void Reverse() {
+        SendControl("reverse");
+    }
+
+    public void Restart() {
+        SendControl("restart");
+    }
+
+    // -------- Helpers --------
+    private void SendControl(string cmd) {
+        var obj = new JObject {
+            ["type"] = "control",
+            ["cmd"] = cmd
+        };
+        Send(obj.ToString(Formatting.None));
+    }
+
+    private void Send(string j) {
+        if (ws != null && ws.ReadyState == WebSocketState.Open) {
+            ws.Send(j);
+        } else {
+            Debug.LogWarning("WebSocket not open; cannot send control message.");
+        }
     }
 }

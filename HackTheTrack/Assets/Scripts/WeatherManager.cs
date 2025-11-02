@@ -1,13 +1,17 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 public class WeatherManager : MonoBehaviour {
+
+    public bool UseWeatherData;
+
     [Header("Weather Effects")]
     public ParticleSystem RainParticles;
-    public AudioSource RainAudio;
     public WindZone WindZone;
     public Material SkyboxMaterial;
 
@@ -21,8 +25,11 @@ public class WeatherManager : MonoBehaviour {
     public Image WeatherImage;
     public Sprite[] WeatherImages;
 
-    public void ApplyWeather(Dictionary<string, object> weatherData) {
-        if (weatherData == null) return;
+    [Header("Sun Settings")]
+    public Light SunLight;
+
+    public void ApplyWeather(Dictionary<string, object> weatherData, string timestamp = null) {
+        if (!UseWeatherData || weatherData == null) return;
 
         float airTemp = GetFloat(weatherData, "air_temp");
         float humidity = GetFloat(weatherData, "humidity");
@@ -43,10 +50,6 @@ public class WeatherManager : MonoBehaviour {
             emission.rateOverTime = rain > 0 ? rain * 100f : 0f;
             if (rain > 0 && !RainParticles.isPlaying) RainParticles.Play();
             else if (rain <= 0 && RainParticles.isPlaying) RainParticles.Stop();
-        }
-
-        if (RainAudio != null) {
-            RainAudio.volume = Mathf.Clamp01(rain / 10f);
         }
 
         // Fog based on humidity
@@ -78,6 +81,13 @@ public class WeatherManager : MonoBehaviour {
                 WeatherImage.sprite = WeatherImages[WeatherImages.Count() - 1];
             }
         }
+
+        // Time and sun angle
+        if (!string.IsNullOrEmpty(timestamp)) {
+            if (DateTime.TryParse(timestamp, out DateTime parsedTime)) {
+                UpdateSunPosition(parsedTime);
+            }
+        }
     }
 
     private float GetFloat(Dictionary<string, object> data, string key) {
@@ -95,5 +105,36 @@ public class WeatherManager : MonoBehaviour {
         if (airTemp >= 30f && windSpeed >= 6f) return "Hot & Windy";
         if (airTemp >= 30f) return "Sunny";
         return "Clear";
+    }
+
+    private void UpdateSunPosition(DateTime time) {
+        if (SunLight == null) return;
+
+        // Assume sunrise at 6:00 and sunset at 18:00
+        float hour = time.Hour + time.Minute / 60f;
+        float sunAngle = Mathf.Lerp(-10f, 170f, Mathf.InverseLerp(6f, 18f, hour));
+
+        SunLight.transform.rotation = Quaternion.Euler(sunAngle, 0f, 0f);
+        SunLight.intensity = Mathf.Clamp01(Mathf.InverseLerp(5f, 7f, hour) * Mathf.InverseLerp(17f, 19f, 19f - hour));
+    }
+
+    public void OnUseWeatherChanged(bool usingWeatherData) {
+        UseWeatherData = usingWeatherData;
+
+        // use default weather settings
+        if (!UseWeatherData) {
+            WindZone.windMain = 0;
+            WindZone.transform.rotation = Quaternion.identity;
+
+            RainParticles.Stop();
+
+            RenderSettings.fog = false;
+            RenderSettings.fogDensity = 0;
+
+            GeneralWeatherConditionText.text = "OFF";
+
+            SunLight.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            SunLight.intensity = 2;
+        }
     }
 }

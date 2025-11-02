@@ -4,8 +4,10 @@ using UnityEngine.UI;
 
 public class TelemetryUI : MonoBehaviour {
     public TelemetryReceiver Receiver;
-    public Button PlayBtn, PauseBtn;
+    public WeatherManager WeatherMng;
+    public Button PlayBtn, PauseBtn, ReverseBtn;
     public Slider SpeedSlider;
+    public Toggle WeatherSwitch;
 
     public TextMeshProUGUI VehicleId;
     public TextMeshProUGUI CurrentSpeed;
@@ -25,14 +27,26 @@ public class TelemetryUI : MonoBehaviour {
     public Slider CurrentRPMSlider;
     public TextMeshProUGUI CurrentTime;
 
+    public TextMeshProUGUI AccelerationXForce;
+    public TextMeshProUGUI AccelerationYForce;
+    public TextMeshProUGUI AccelerationForceClass;
+
+    public TextMeshProUGUI CurrentActiveCameraValue;
+
     private void Start() {
         PlayBtn.onClick.AddListener(Receiver.Play);
         PauseBtn.onClick.AddListener(Receiver.Pause);
+        ReverseBtn.onClick.AddListener(Receiver.Reverse);
+
         SpeedSlider.onValueChanged.AddListener(v => {
             Receiver.SetSpeed(v);
             CurrentSpeedSliderValue.text = v.ToString();
         });
 
         CurrentSpeedSliderValue.text = SpeedSlider.value.ToString();
+
+        WeatherSwitch.onValueChanged.AddListener(v => {
+            WeatherMng.OnUseWeatherChanged(v);
+        });
     }
 }

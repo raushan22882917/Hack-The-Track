@@ -14,9 +14,13 @@ SEND_INTERVAL = 1.0 / TARGET_HZ if not UNLIMITED_MODE else 0
 # Playback state
 clients = set()
 is_paused = True
+is_reversed = False
+has_started = False
 playback_speed = 1.0
 master_start_time = None
 playback_start_timestamp = None
+rows = []
+pending_rows = []
 
 def cast_num(x):
     try:
@@ -27,6 +31,8 @@ def cast_num(x):
 
 async def broadcast_loop():
     global master_start_time, playback_start_timestamp
+    global rows, pending_rows, has_started
+    global is_paused, is_reversed, playback_speed
 
     # Load vehicle telemetry
     vehicle_files = glob.glob(os.path.join(INPUT_DIR, "*.csv"))
@@ -51,19 +57,20 @@ async def broadcast_loop():
         return
 
     df_weather = pd.read_csv(WEATHER_FILE, sep=";")
-    df_weather["meta_time"] = pd.to_datetime(df_weather["TIME_UTC_STR"], utc=True, errors="coerce")
+    df_weather["meta_time"] = pd.to_datetime(df_weather["TIME_UTC_SECONDS"], utc=True, errors="coerce")
     df_weather = df_weather.sort_values("meta_time")
     weather_rows = df_weather.to_dict("records")
     pending_weather = weather_rows
     latest_weather = None
 
     # Establish playback start
-    playback_start_timestamp = df_all["meta_time"].min()
+    rows = df_all.to_dict("records")
+    pending_rows = rows.copy()
+    playback_start_timestamp = rows[0]["meta_time"]
     master_start_time = None
+    has_started = True
     print("Starting playback from", playback_start_timestamp)
 
-    rows = df_all.to_dict("records")
-    pending_rows = rows
     last_send_time = asyncio.get_event_loop().time()
 
     while True:
@@ -76,11 +83,16 @@ async def broadcast_loop():
             master_start_time = asyncio.get_event_loop().time()
 
         elapsed_real = asyncio.get_event_loop().time() - master_start_time
-        sim_time = playback_start_timestamp + pd.to_timedelta(elapsed_real * playback_speed, unit="s")
+        delta = -elapsed_real * playback_speed if is_reversed else elapsed_real * playback_speed
+        sim_time = playback_start_timestamp + pd.to_timedelta(delta, unit="s")
 
         # Get vehicle rows up to sim_time
-        to_emit = [r for r in pending_rows if r["meta_time"] <= sim_time]
-        pending_rows = [r for r in pending_rows if r["meta_time"] > sim_time]
+        if is_reversed:
+            to_emit = [r for r in rows if r["meta_time"] >= sim_time]
+            pending_rows = [r for r in rows if r["meta_time"] < sim_time]
+        else:
+            to_emit = [r for r in pending_rows if r["meta_time"] <= sim_time]
+            pending_rows = [r for r in pending_rows if r["meta_time"] > sim_time]
 
         # Get latest weather sample
         weather_to_emit = [w for w in pending_weather if w["meta_time"] <= sim_time]
@@ -133,7 +145,8 @@ async def broadcast_loop():
             for c in clients.copy():
                 asyncio.create_task(c.send(data))
 
-        if not pending_rows:
+        # End condition
+        if (not pending_rows and not is_reversed) or (not to_emit and is_reversed):
             print("End of log reached.")
             end_msg = {
                 "type": "telemetry_end",
@@ -142,6 +155,8 @@ async def broadcast_loop():
             data = json.dumps(end_msg)
             for c in clients.copy():
                 asyncio.create_task(c.send(data))
+            is_paused = True
+            master_start_time = None
             break
 
 async def handle_client(ws):
@@ -160,17 +175,36 @@ async def handle_client(ws):
         print("Client disconnected.")
 
 async def process_control(msg):
-    global is_paused, playback_speed, master_start_time, playback_start_timestamp
+    global is_paused, is_reversed, has_started
+    global playback_speed, master_start_time, playback_start_timestamp
+    global pending_rows, rows
+
     cmd = msg.get("cmd")
     if cmd == "play":
-        if is_paused:
+        if is_paused and has_started:
             is_paused = False
+            is_reversed = False
             master_start_time = asyncio.get_event_loop().time()
-            print("▶️ Playback started")
+            print("▶️ Playback resumed")
+    elif cmd == "reverse":
+        if is_paused and has_started:
+            is_paused = False
+            is_reversed = True
+            master_start_time = asyncio.get_event_loop().time()
+            print("⏪ Reverse playback started")
+    elif cmd == "restart":
+        is_paused = True
+        is_reversed = False
+        has_started = True
+        playback_start_timestamp = rows[0]["meta_time"]
+        pending_rows = rows.copy()
+        master_start_time = None
+        print("🔁 Playback restarted")
     elif cmd == "pause":
         if not is_paused:
             elapsed = asyncio.get_event_loop().time() - master_start_time
-            playback_start_timestamp += pd.to_timedelta(elapsed * playback_speed, unit="s")
+            delta = -elapsed * playback_speed if is_reversed else elapsed * playback_speed
+            playback_start_timestamp += pd.to_timedelta(delta, unit="s")
             is_paused = True
             master_start_time = None
             print("⏸️ Paused")
@@ -178,7 +212,8 @@ async def process_control(msg):
         val = float(msg.get("value", 1.0))
         if not is_paused and master_start_time:
             elapsed = asyncio.get_event_loop().time() - master_start_time
-            playback_start_timestamp += pd.to_timedelta(elapsed * playback_speed, unit="s")
+            delta = -elapsed * playback_speed if is_reversed else elapsed * playback_speed
+            playback_start_timestamp += pd.to_timedelta(delta, unit="s")
             master_start_time = asyncio.get_event_loop().time()
         playback_speed = val
         print(f"⏩ Speed set to {playback_speed}x")

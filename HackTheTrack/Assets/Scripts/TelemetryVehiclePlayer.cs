@@ -1,6 +1,7 @@
 using Dreamteck.Splines;
 using System;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class TelemetryVehiclePlayer : MonoBehaviour {
@@ -18,6 +19,26 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     public LineRenderer TrackRenderer;
     public SplineProjector TelemetryCar;
     public GameObject CarGeometry;
+
+    [Header("Acceleration Sensors")]
+    public Transform XForceSensor;
+    public Transform YForceSensor;
+
+    [Header("Movement")]
+    public Transform LeftFrontWheelSpin;
+    public Transform RightFrontWheelSpin;
+    public Transform LeftRearWheelSpin;
+    public Transform RightRearWheelSpin;
+
+    [Header("Steering-CarGeometry")]
+    public Transform SteeringWheel;
+    public Transform LeftFrontWheel;
+    public Transform RightFrontWheel;
+
+    [Header("Steering-TelemetryCar")]
+    public Transform TelemetrySteeringWheel;
+    public Transform TelemetryLeftFrontWheel;
+    public Transform TelemetryRightFrontWheel;
 
     [Header("Physics Settings")]
     public float maxAcceleration = 5f;   // m/s² at full throttle
@@ -43,6 +64,9 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     private float currentSteeringAngle;
     private int currentGear;
 
+    private float currentAccelerationXForce;
+    private float currentAccelerationYForce;
+
     private DateTime currentDateTime;
 
     private void Start() {
@@ -57,6 +81,10 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
 
         Positioner.enabled = IsInterpolationActive;
         TelemetryCar.enabled = !IsInterpolationActive;
+        TelemetryCar.gameObject.SetActive(!IsInterpolationActive);
+
+        XForceSensor.localScale = Vector3.zero;
+        YForceSensor.localScale = Vector3.zero;
     }
 
     private void Update() {
@@ -86,9 +114,19 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
 
             // Update estimated speed display
             TelemetryDisplay.CurrentSpeed.text = (currentSpeed * 3.6f).ToString("F2"); // km/h
-
             CarGeometry.transform.SetPositionAndRotation(transform.position, transform.rotation);
+
+            // assuming 45cm wheel radius
+            float angularVelocity = (currentSpeed / (2f * Mathf.PI * 0.45f)) * 360f * Time.deltaTime * (-1f);
+            LeftFrontWheelSpin.Rotate(Vector3.right, angularVelocity, Space.Self);
+            RightFrontWheelSpin.Rotate(Vector3.right, angularVelocity, Space.Self);
+            LeftRearWheelSpin.Rotate(Vector3.right, angularVelocity, Space.Self);
+            RightRearWheelSpin.Rotate(Vector3.right, angularVelocity, Space.Self);
         }
+    }
+
+    private void LateUpdate() {
+        TelemetryCar.transform.rotation = CarGeometry.transform.rotation;
     }
 
     private void OnDestroy() {
@@ -107,6 +145,9 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
 
         if (samples.ContainsKey("Steering_Angle")) {
             currentSteeringAngle = Convert.ToSingle(samples["Steering_Angle"]);
+            SteeringWheel.localRotation = Quaternion.Euler(0, 0, currentSteeringAngle);
+            TelemetrySteeringWheel.localRotation = Quaternion.Euler(0, 0, currentSteeringAngle);
+            ApplySteeringToWheels(currentSteeringAngle);
         }
 
         if (samples.ContainsKey("aps")) {
@@ -126,6 +167,15 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
 
         if (samples.ContainsKey("lap")) {
             currentLapNumber = Convert.ToInt16(samples["lap"]);
+        }
+
+        if (samples.ContainsKey("accx_can")) {
+            currentAccelerationXForce = Convert.ToSingle(samples["accx_can"]);
+            XForceSensor.localScale = new Vector3(currentAccelerationXForce, 1f, 1f);
+        }
+        if (samples.ContainsKey("accy_can")) {
+            currentAccelerationYForce = Convert.ToSingle(samples["accy_can"]) * (-1f);
+            YForceSensor.localScale = new Vector3(1f, 1f, currentAccelerationYForce);
         }
 
         // Speed is usually in km/h, convert to m/s if needed
@@ -177,6 +227,40 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         }
     }
 
+    private string InferAccelerationClass() {
+        float absX = Mathf.Abs(currentAccelerationXForce);
+        float absY = Mathf.Abs(currentAccelerationYForce);
+        float load = Mathf.Sqrt(currentAccelerationXForce * currentAccelerationXForce + currentAccelerationYForce * currentAccelerationYForce);
+
+        string phase = "Trail Zone - cornering braking/throttle";
+        if (absX > absY * 1.5f) {
+            phase = currentAccelerationXForce > 0 ? "Acceleration Phase" : "Braking Phase";
+        } else if (absY > absX * 1.5f) {
+            phase = "Cornering Phase";
+        }
+
+        // Combined total load classification
+        string accelerationClass = "Limit Zone --- car near traction limit";
+        if (load < 0.1f) accelerationClass = "Cruise Zone --- car stable, minimal load";
+        if (load < 0.25f) accelerationClass = "Light Dynamics --- gentle motion";
+        if (load < 0.45f) accelerationClass = "Push Zone --- moderate throttle or braking";
+        if (load < 0.65f) accelerationClass = "Attack Zone --- strong dynamic load";
+
+        return $"{accelerationClass}\n{phase} --- load {load:F4}g";
+    }
+
+    private void ApplySteeringToWheels(float steeringAngleDegrees, float maxSteeringAngle = 30f) {
+        // Clamp the input angle to the realistic steering range
+        float clampedAngle = Mathf.Clamp(steeringAngleDegrees, -maxSteeringAngle, maxSteeringAngle) * (-1f);
+
+        // Apply local rotation to simulate wheel steering turning
+        LeftFrontWheel.localRotation = Quaternion.Euler(0f, clampedAngle, 0f);
+        RightFrontWheel.localRotation = Quaternion.Euler(0f, clampedAngle, 0f);
+        TelemetryLeftFrontWheel.localRotation = Quaternion.Euler(0f, clampedAngle, 0f);
+        TelemetryRightFrontWheel.localRotation = Quaternion.Euler(0f, clampedAngle, 0f);
+    }
+
+
     public void UpdateUIValues() {
         TelemetryDisplay.VehicleId.text = VehicleId;
 
@@ -204,6 +288,10 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         TelemetryDisplay.CurrentLap.text = currentLapNumber.ToString();
 
         TelemetryDisplay.CurrentTime.text = $"{currentDateTime:dd/MM/yyyy H:mm:ss}";
+
+        TelemetryDisplay.AccelerationXForce.text = currentAccelerationXForce.ToString("F4");
+        TelemetryDisplay.AccelerationYForce.text = currentAccelerationYForce.ToString("F4");
+        TelemetryDisplay.AccelerationForceClass.text = InferAccelerationClass();
     }
 
     public void OnTelemetryStreamEnded(string timestamp) {
@@ -213,7 +301,5 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     public void OnTelemetryStreamPaused(bool isPause) {
         Debug.Log($"{VehicleId} telemetry stream paused: {isPause}");
         IsPaused = isPause;
-
-
     }
 }
