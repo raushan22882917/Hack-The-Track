@@ -294,6 +294,10 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         TelemetryDisplay.AccelerationForceClass.text = InferAccelerationClass();
     }
 
+    public Transform GetCameraTarget() {
+        return IsInterpolationActive ? CarGeometry.transform : TelemetryCar.transform;
+    }
+
     public void OnTelemetryStreamEnded(string timestamp) {
         Debug.Log($"{VehicleId} telemetry stream ended at {timestamp}");
     }

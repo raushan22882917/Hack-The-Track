@@ -26,7 +26,7 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             currentVehicleIndex = (currentVehicleIndex + 1) % vehicles.Count;
 
             foreach (var cinemachineCam in CinemachineCams) {
-                cinemachineCam.Target.TrackingTarget = vehicles[currentVehicleIndex].CarGeometry.transform;
+                cinemachineCam.Target.TrackingTarget = vehicles[currentVehicleIndex].GetCameraTarget();
             }
         }
 
