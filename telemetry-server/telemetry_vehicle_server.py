@@ -5,7 +5,7 @@ import glob, os
 
 # CONFIG
 INPUT_DIR = "logs/vehicles"
-WEATHER_FILE = "logs/weather/26_Weather_Race 1_Anonymized.CSV"
+WEATHER_FILE = "logs/weather/R1_weather_data.csv"
 PORT = 8765
 TARGET_HZ = 60
 UNLIMITED_MODE = False
@@ -224,7 +224,7 @@ async def process_control(msg):
 
 async def main():
     server = await websockets.serve(handle_client, "localhost", PORT)
-    print(f"Server running on ws://localhost:{PORT}")
+    print(f"Telemetry server running on ws://localhost:{PORT}")
     await broadcast_loop()
     await server.wait_closed()
 

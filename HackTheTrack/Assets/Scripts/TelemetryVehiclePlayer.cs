@@ -76,6 +76,9 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         var vehicleSelector = FindFirstObjectByType<TelemetryVehicleSelector>();
         if (vehicleSelector != null) vehicleSelector.RegisterVehicle(this);
 
+        var sectionEnduranceReceiver = FindFirstObjectByType<SectionEnduranceReceiver>();
+        if (sectionEnduranceReceiver != null) sectionEnduranceReceiver.RegisterVehicle(this);
+
         splineLength = Positioner.CalculateLength();
         Debug.Log($"Spline Length: {splineLength}");
 

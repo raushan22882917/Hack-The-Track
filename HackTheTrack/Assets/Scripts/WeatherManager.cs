@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 public class WeatherManager : MonoBehaviour {
@@ -115,7 +114,11 @@ public class WeatherManager : MonoBehaviour {
         float sunAngle = Mathf.Lerp(-10f, 170f, Mathf.InverseLerp(6f, 18f, hour));
 
         SunLight.transform.rotation = Quaternion.Euler(sunAngle, 0f, 0f);
-        SunLight.intensity = Mathf.Clamp01(Mathf.InverseLerp(5f, 7f, hour) * Mathf.InverseLerp(17f, 19f, 19f - hour));
+
+        float sunrise = Mathf.InverseLerp(5f, 7f, hour);
+        float sunset = 1f - Mathf.InverseLerp(17f, 19f, hour);
+
+        SunLight.intensity = Mathf.Clamp01(sunrise * sunset);
     }
 
     public void OnUseWeatherChanged(bool usingWeatherData) {

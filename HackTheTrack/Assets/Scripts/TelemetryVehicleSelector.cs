@@ -31,16 +31,39 @@ public class TelemetryVehicleSelector : MonoBehaviour {
         }
 
         if (Keyboard.current.cKey.wasPressedThisFrame && vehicles.Count > 0) {
-            currentCameraIndex = (currentCameraIndex + 1) % CinemachineCams.Length;
-            TelemetryDisplay.CurrentActiveCameraValue.text = CinemachineCamsLabels[currentCameraIndex];
+            SelectNextCamera();
+        }
 
-            for (int i = 0; i < CinemachineCams.Length; i++) {
-                CinemachineCams[i].gameObject.SetActive(i == currentCameraIndex);
-            }
+        if (Keyboard.current.vKey.wasPressedThisFrame && vehicles.Count > 0) {
+            SelectPreviousCamera();
         }
 
         if (currentVehicleIndex >= 0) {
             vehicles[currentVehicleIndex].UpdateUIValues();
+        }
+    }
+
+    private void SelectNextCamera() {
+        SelectNextOrPreviousCamera(true);
+    }
+
+    private void SelectPreviousCamera() {
+        SelectNextOrPreviousCamera(false);
+    }
+
+    private void SelectNextOrPreviousCamera(bool goToNextCamera) {
+        currentCameraIndex += goToNextCamera ? 1 : -1;
+
+        if (currentCameraIndex < 0) {
+            currentCameraIndex = CinemachineCams.Length - 1;
+        } else {
+            currentCameraIndex %= CinemachineCams.Length;
+        }
+
+        TelemetryDisplay.CurrentActiveCameraValue.text = CinemachineCamsLabels[currentCameraIndex];
+
+        for (int i = 0; i < CinemachineCams.Length; i++) {
+            CinemachineCams[i].gameObject.SetActive(i == currentCameraIndex);
         }
     }
 
