@@ -27,6 +27,10 @@ public class WeatherManager : MonoBehaviour {
     [Header("Sun Settings")]
     public Light SunLight;
 
+    private void Start() {
+        RainParticles.Stop();
+    }
+
     public void ApplyWeather(Dictionary<string, object> weatherData, string timestamp = null) {
         if (!UseWeatherData || weatherData == null) return;
 
@@ -109,14 +113,14 @@ public class WeatherManager : MonoBehaviour {
     private void UpdateSunPosition(DateTime time) {
         if (SunLight == null) return;
 
-        // Assume sunrise at 6:00 and sunset at 18:00
+        // Assume sunrise at 6:00 and sunset at 21:00
         float hour = time.Hour + time.Minute / 60f;
-        float sunAngle = Mathf.Lerp(-10f, 170f, Mathf.InverseLerp(6f, 18f, hour));
+        float sunAngle = Mathf.Lerp(-10f, 170f, Mathf.InverseLerp(6f, 21f, hour));
 
         SunLight.transform.rotation = Quaternion.Euler(sunAngle, 0f, 0f);
 
         float sunrise = Mathf.InverseLerp(5f, 7f, hour);
-        float sunset = 1f - Mathf.InverseLerp(17f, 19f, hour);
+        float sunset = 1f - Mathf.InverseLerp(20f, 22f, hour);
 
         SunLight.intensity = Mathf.Clamp01(sunrise * sunset);
     }

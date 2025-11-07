@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -18,15 +19,6 @@ public class LapEvent {
     public string timestamp;
 }
 
-[Serializable]
-public class CarRaceState {
-    public string LastLapTime;
-    public float[] LastSectorTimes;
-    public float LastTopSpeed;
-    public string LastFlag;
-    public bool InPit;
-}
-
 public class SectionEnduranceReceiver : MonoBehaviour {
 
     public TelemetryVehicleSelector VehicleSelector;
@@ -34,7 +26,7 @@ public class SectionEnduranceReceiver : MonoBehaviour {
     public string ServerUrl = "ws://localhost:8766";
 
     private WebSocket ws;
-    private Dictionary<string, CarRaceState> carStates = new();
+    private Dictionary<string, List<LapEvent>> carLapData = new();
 
     private string oldVehicleId;
     private bool isStatsVisible;
@@ -49,13 +41,17 @@ public class SectionEnduranceReceiver : MonoBehaviour {
     private void Update() {
         // show/hide stats
         if (Keyboard.current.tabKey.wasPressedThisFrame) {
-            oldVehicleId = VehicleSelector.GetCurrentlySelectedVehicleId();
             isStatsVisible = !isStatsVisible;
             SectionEndurance.ToggleVisibility(isStatsVisible);
+
+            ShowLapDataForVehicle();
         }
 
         if (isStatsVisible && oldVehicleId != VehicleSelector.GetCurrentlySelectedVehicleId()) {
             // refresh data in UI
+            oldVehicleId = VehicleSelector.GetCurrentlySelectedVehicleId();
+            var carNumber = ExtractCarNumber(oldVehicleId);
+            SectionEndurance.ShowLapData(carLapData[carNumber]);
         }
     }
 
@@ -63,20 +59,23 @@ public class SectionEnduranceReceiver : MonoBehaviour {
         ws.CloseAsync();
     }
 
+    public void ShowLapDataForVehicle() {
+        oldVehicleId = VehicleSelector.GetCurrentlySelectedVehicleId();
+
+        var carNumber = ExtractCarNumber(oldVehicleId);
+        SectionEndurance.ShowLapData(carLapData[carNumber]);
+    }
+
     private void HandleMessage(string json) {
         LapEvent lapEvent = JsonUtility.FromJson<LapEvent>(json);
         if (lapEvent == null || lapEvent.type != "lap_event") return;
 
-        if (!carStates.TryGetValue(lapEvent.vehicle_id, out var state)) {
-            state = new CarRaceState();
-            carStates[lapEvent.vehicle_id] = state;
+        if (!carLapData.TryGetValue(lapEvent.vehicle_id, out var lapData)) {
+            lapData = new List<LapEvent>();
+            carLapData[lapEvent.vehicle_id] = lapData;
         }
 
-        state.LastLapTime = lapEvent.lap_time;
-        state.LastSectorTimes = lapEvent.sector_times;
-        state.LastTopSpeed = lapEvent.top_speed;
-        state.LastFlag = lapEvent.flag;
-        state.InPit = lapEvent.pit;
+        lapData.Add(lapEvent);
 
         //Debug.Log($"Car #{lapEvent.vehicle_id} finished lap {lapEvent.lap} ({lapEvent.lap_time})");
     }
@@ -85,8 +84,8 @@ public class SectionEnduranceReceiver : MonoBehaviour {
         // Extract the numeric car number from GR86-004-78 -> "78"
         string carNumber = ExtractCarNumber(vehicle.VehicleId);
 
-        if (!carStates.ContainsKey(carNumber)) {
-            carStates[carNumber] = new CarRaceState();
+        if (!carLapData.ContainsKey(carNumber)) {
+            carLapData[carNumber] = new List<LapEvent>();
             Debug.Log($"SECTION ENDURANCE: Registered vehicle {vehicle.VehicleId} mapped to car #{carNumber}");
         }
     }
@@ -95,5 +94,18 @@ public class SectionEnduranceReceiver : MonoBehaviour {
         // Match last numeric segment, e.g. GR86-004-78 -> 78
         var match = Regex.Match(vehicleId, @"(\d+)$");
         return match.Success ? match.Value : vehicleId;
+    }
+
+    public List<LapEvent> GetLapEventsForCurrentLap(int lapNumber) {
+        var lapEventsForCurrentLap = new List<LapEvent>();
+
+        foreach (var lapData in carLapData) {
+            var lapEvent = lapData.Value.FirstOrDefault(v => v.lap == lapNumber);
+            if (lapEvent != null) {
+                lapEventsForCurrentLap.Add(lapEvent);
+            }
+        }
+
+        return lapEventsForCurrentLap;
     }
 }

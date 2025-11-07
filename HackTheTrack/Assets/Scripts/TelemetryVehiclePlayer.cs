@@ -88,6 +88,10 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
 
         XForceSensor.localScale = Vector3.zero;
         YForceSensor.localScale = Vector3.zero;
+
+        TelemetryDisplay.ShowGhostCars.onValueChanged.AddListener(v => {
+            CarGeometry.SetActive(v);
+        });
     }
 
     private void Update() {

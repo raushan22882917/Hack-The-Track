@@ -29,7 +29,7 @@ def cast_num(x):
     except Exception:
         return x
 
-async def broadcast_loop():
+async def broadcast_loop(shutdown_event):
     global master_start_time, playback_start_timestamp
     global rows, pending_rows, has_started
     global is_paused, is_reversed, playback_speed
@@ -38,6 +38,7 @@ async def broadcast_loop():
     vehicle_files = glob.glob(os.path.join(INPUT_DIR, "*.csv"))
     if not vehicle_files:
         print("No vehicle CSVs found.")
+        shutdown_event.set()
         return
 
     dfs = []
@@ -54,6 +55,7 @@ async def broadcast_loop():
     # Load weather data
     if not os.path.exists(WEATHER_FILE):
         print("No weather file found.")
+        shutdown_event.set()
         return
 
     df_weather = pd.read_csv(WEATHER_FILE, sep=";")
@@ -157,9 +159,10 @@ async def broadcast_loop():
                 asyncio.create_task(c.send(data))
             is_paused = True
             master_start_time = None
+            shutdown_event.set()
             break
 
-async def handle_client(ws):
+async def handle_client(ws, shutdown_event):
     print("Client connected.")
     clients.add(ws)
     try:
@@ -170,9 +173,14 @@ async def handle_client(ws):
                 continue
             if data.get("type") == "control":
                 await process_control(data)
+    except websockets.ConnectionClosed:
+        pass
     finally:
         clients.remove(ws)
         print("Client disconnected.")
+        if not clients:
+            print("No clients remaining - triggering shutdown.")
+            shutdown_event.set()
 
 async def process_control(msg):
     global is_paused, is_reversed, has_started
@@ -223,10 +231,29 @@ async def process_control(msg):
         print(f"⏩ Seek to {playback_start_timestamp}")
 
 async def main():
-    server = await websockets.serve(handle_client, "localhost", PORT)
+    shutdown_event = asyncio.Event()
+    broadcast_task = asyncio.create_task(broadcast_loop(shutdown_event))
+
+    async def client_wrapper(ws):
+        return await handle_client(ws, shutdown_event)
+    
+    server = await websockets.serve(client_wrapper, "localhost", PORT)
     print(f"Telemetry server running on ws://localhost:{PORT}")
-    await broadcast_loop()
+
+    await shutdown_event.wait()
+
+    print("Shutting down telemetry server...")
+    server.close()
     await server.wait_closed()
+
+    if not broadcast_task.done():
+        broadcast_task.cancel()
+        try:
+            await broadcast_task
+        except asyncio.CancelledError:
+            pass
+
+    print("Server closed cleanly.")
 
 if __name__ == "__main__":
     asyncio.run(main())

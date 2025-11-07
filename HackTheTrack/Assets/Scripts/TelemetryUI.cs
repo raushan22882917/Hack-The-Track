@@ -8,6 +8,7 @@ public class TelemetryUI : MonoBehaviour {
     public Button PlayBtn, PauseBtn, ReverseBtn;
     public Slider SpeedSlider;
     public Toggle WeatherSwitch;
+    public Toggle ShowGhostCars;
 
     public TextMeshProUGUI VehicleId;
     public TextMeshProUGUI CurrentSpeed;

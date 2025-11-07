@@ -10,7 +10,7 @@ WAIT = 0.01
 
 clients = set()
 
-async def race_event_stream():
+async def race_event_stream(shutdown_event):
     df = pd.read_csv(SECTION_ENDURANCE_DATA, sep=";")
 
     # removes spaces before/after names
@@ -19,6 +19,8 @@ async def race_event_stream():
     # Use car NUMBER (sticker ID) instead of DRIVER_NUMBER
     df["CAR_NUMBER"] = df["NUMBER"].astype(str)
     df.sort_values(["CAR_NUMBER", "LAP_NUMBER", "ELAPSED"], inplace=True)
+
+    print("Section endurance stream started.")
 
     for _, row in df.iterrows():
         msg = {
@@ -43,23 +45,49 @@ async def race_event_stream():
 
         await asyncio.sleep(WAIT)  # simulate live feed
 
-async def handle_client(ws):
+    print("Race event stream finished.")
+    shutdown_event.set()
+
+async def handle_client(ws, shutdown_event, race_task_ref):
     print("Client connected.")
     clients.add(ws)
+
+    # Start race stream when first client connects
+    if race_task_ref["task"] is None or race_task_ref["task"].done():
+        race_task_ref["task"] = asyncio.create_task(race_event_stream(shutdown_event))
+
     try:
         async for msg in ws:
             try:
                 data = json.loads(msg)
             except Exception:
                 continue
+    except websockets.ConnectionClosed:
+        pass
     finally:
         clients.remove(ws)
         print("Client disconnected.")
 
+        # If last client disconnected → shut down
+        if not clients:
+            print("No more clients connected - preparing to shut down.")
+            shutdown_event.set()
+
 async def main():
-    server = await websockets.serve(handle_client, "localhost", PORT)
+    shutdown_event = asyncio.Event()      # Create inside the running loop
+    race_task_ref = {"task": None}        # Mutable container for current race stream task
+
+    async def client_handler(ws):
+        return await handle_client(ws, shutdown_event, race_task_ref)
+    
+    server = await websockets.serve(client_handler, "localhost", PORT)
     print(f"SectionEndurance server running on ws://localhost:{PORT}")
-    await race_event_stream()
+
+    # await race_event_stream()
+
+    await shutdown_event.wait()
+    print("Shutting down WebSocket server...")
+    server.close()
     await server.wait_closed()
 
 asyncio.run(main())
