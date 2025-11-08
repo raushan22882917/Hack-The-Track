@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -17,6 +18,7 @@ public class TelemetryVehicleSelector : MonoBehaviour {
     private void Start() {
         for (int i = 0; i < CinemachineCams.Length; i++) {
             CinemachineCams[i].gameObject.SetActive(i == currentCameraIndex);
+            CinemachineCams[i].Target.TrackingTarget = vehicles[currentVehicleIndex].GetCameraTarget();
         }
         TelemetryDisplay.CurrentActiveCameraValue.text = CinemachineCamsLabels[currentCameraIndex];
     }
@@ -80,5 +82,11 @@ public class TelemetryVehicleSelector : MonoBehaviour {
 
     public string GetCurrentlySelectedVehicleId() {
         return vehicles[currentVehicleIndex].VehicleId;
+    }
+
+    public string ExtractCarNumber(string vehicleId) {
+        // Match last numeric segment, e.g. GR86-004-78 -> 78
+        var match = Regex.Match(vehicleId, @"(\d+)$");
+        return match.Success ? match.Value : vehicleId;
     }
 }

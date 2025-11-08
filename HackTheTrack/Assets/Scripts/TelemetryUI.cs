@@ -33,6 +33,7 @@ public class TelemetryUI : MonoBehaviour {
     public TextMeshProUGUI AccelerationForceClass;
 
     public TextMeshProUGUI CurrentActiveCameraValue;
+    public Image CurrentColorImage;
 
     private void Start() {
         PlayBtn.onClick.AddListener(Receiver.Play);

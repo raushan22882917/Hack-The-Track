@@ -299,6 +299,8 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         TelemetryDisplay.AccelerationXForce.text = currentAccelerationXForce.ToString("F4");
         TelemetryDisplay.AccelerationYForce.text = currentAccelerationYForce.ToString("F4");
         TelemetryDisplay.AccelerationForceClass.text = InferAccelerationClass();
+
+        TelemetryDisplay.CurrentColorImage.color = TrackRenderer.material.color;
     }
 
     public Transform GetCameraTarget() {
