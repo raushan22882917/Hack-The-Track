@@ -1,6 +1,7 @@
 using Dreamteck.Splines;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.VisualScripting;
 using UnityEngine;
 
@@ -69,6 +70,8 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
 
     private DateTime currentDateTime;
 
+    private SectionEnduranceReceiver sectionEnduranceReceiver;
+
     private void Start() {
         var receiver = FindFirstObjectByType<TelemetryReceiver>();
         if (receiver != null) receiver.Register(this);
@@ -76,7 +79,7 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         var vehicleSelector = FindFirstObjectByType<TelemetryVehicleSelector>();
         if (vehicleSelector != null) vehicleSelector.RegisterVehicle(this);
 
-        var sectionEnduranceReceiver = FindFirstObjectByType<SectionEnduranceReceiver>();
+        sectionEnduranceReceiver = FindFirstObjectByType<SectionEnduranceReceiver>();
         if (sectionEnduranceReceiver != null) sectionEnduranceReceiver.RegisterVehicle(this);
 
         splineLength = Positioner.CalculateLength();
@@ -301,6 +304,7 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
         TelemetryDisplay.AccelerationForceClass.text = InferAccelerationClass();
 
         TelemetryDisplay.CurrentColorImage.color = TrackRenderer.material.color;
+        TelemetryDisplay.CurrentFlagColorImage.color = GetFlagColorByLapNumber(currentLapNumber - 1, VehicleId);
     }
 
     public Transform GetCameraTarget() {
@@ -314,5 +318,28 @@ public class TelemetryVehiclePlayer : MonoBehaviour {
     public void OnTelemetryStreamPaused(bool isPause) {
         Debug.Log($"{VehicleId} telemetry stream paused: {isPause}");
         IsPaused = isPause;
+    }
+
+    private Color GetFlagColorByLapNumber(int lapNumber, string vehicleId) {
+        var carNumber = sectionEnduranceReceiver.VehicleSelector.ExtractCarNumber(vehicleId);
+        if (!sectionEnduranceReceiver.CarLapData.ContainsKey(carNumber)) {
+            return FlagToColor("");
+        }
+
+        var laps = sectionEnduranceReceiver.CarLapData[carNumber];
+        var validLap = laps.FirstOrDefault(l => l.lap == lapNumber);
+        if (validLap != null) {
+            return FlagToColor(validLap.flag);
+        }
+        return FlagToColor("");
+    }
+
+    private Color FlagToColor(string flag) {
+        return flag switch {
+            "GF" => Color.green,
+            "FCY" => Color.yellow,
+            "FF" => Color.black,
+            _ => Color.gray,
+        };
     }
 }

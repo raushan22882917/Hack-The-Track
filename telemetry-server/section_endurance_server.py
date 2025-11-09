@@ -35,7 +35,7 @@ async def race_event_stream(shutdown_event):
             ],
             "top_speed": row.get("TOP_SPEED"),
             "flag": row.get("FLAG_AT_FL"),
-            "pit": bool(row.get("CROSSING_FINISH_LINE_IN_PIT")),
+            "pit": pd.notna(row.get("CROSSING_FINISH_LINE_IN_PIT")),
             "timestamp": row.get("HOUR"),
         }
 

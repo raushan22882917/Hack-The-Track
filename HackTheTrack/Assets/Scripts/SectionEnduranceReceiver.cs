@@ -34,15 +34,8 @@ public class SectionEnduranceReceiver : MonoBehaviour {
     }
 
     private void OnDestroy() {
-        ws.CloseAsync();
+        ws?.CloseAsync();
     }
-
-    //public void ShowLapDataForVehicle() {
-    //    oldVehicleId = VehicleSelector.GetCurrentlySelectedVehicleId();
-
-    //    var carNumber = VehicleSelector.ExtractCarNumber(oldVehicleId);
-    //    SectionEndurance.ShowLapData(carLapData[carNumber]);
-    //}
 
     private void HandleMessage(string json) {
         LapEvent lapEvent = JsonUtility.FromJson<LapEvent>(json);
@@ -54,8 +47,6 @@ public class SectionEnduranceReceiver : MonoBehaviour {
         }
 
         lapData.Add(lapEvent);
-
-        //Debug.Log($"Car #{lapEvent.vehicle_id} finished lap {lapEvent.lap} ({lapEvent.lap_time})");
     }
 
     public void RegisterVehicle(TelemetryVehiclePlayer vehicle) {

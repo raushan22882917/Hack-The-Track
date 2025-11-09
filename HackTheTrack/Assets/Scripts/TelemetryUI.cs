@@ -34,6 +34,7 @@ public class TelemetryUI : MonoBehaviour {
 
     public TextMeshProUGUI CurrentActiveCameraValue;
     public Image CurrentColorImage;
+    public Image CurrentFlagColorImage;
 
     private void Start() {
         PlayBtn.onClick.AddListener(Receiver.Play);

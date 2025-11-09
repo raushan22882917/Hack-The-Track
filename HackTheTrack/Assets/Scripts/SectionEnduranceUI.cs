@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -18,10 +20,15 @@ public class SectionEnduranceUI : MonoBehaviour {
     [SerializeField] private Button ShowAllLapTimesForCurrentVehicle;
     [SerializeField] private Button ShowCurrentLapTimesForAllVehicles;
     [SerializeField] private Button ShowAllLapTimesForAllVehicles;
+    [SerializeField] private Button Show10FastestLapTimesForVehicle;
+
+    [SerializeField] private Button ShowFinalResultsForRace;
+    [SerializeField] private LeaderboardReceiver Leaderboard;
 
     [SerializeField] private LineChart vehicleLineChart;
     [SerializeField] private LineChart currentLapAllVehiclesLineChart;
     [SerializeField] private LineChart allLapAllVehiclesLineChart;
+    [SerializeField] private LineChart vehicle10FastestLapsLineChart;
 
     [SerializeField] private List<GameObject> tabPages = new();
 
@@ -30,7 +37,7 @@ public class SectionEnduranceUI : MonoBehaviour {
 
     private void Start() {
         sectionEndurancePanel.SetActive(false);
-        EnableTabPage(tabPages.Count - 1);
+        EnableTabPage(4);
 
         ShowVehicleLapTimes.onClick.AddListener(() => {
             EnableTabPage(0);
@@ -58,6 +65,49 @@ public class SectionEnduranceUI : MonoBehaviour {
         ShowAllLapTimesForAllVehicles.onClick.AddListener(() => {
             EnableTabPage(3);
             ShowAllLapDataForAllVehicles();
+        });
+        Show10FastestLapTimesForVehicle.onClick.AddListener(() => {
+            EnableTabPage(5);
+            oldVehicleId = sectionEnduranceReceiver.VehicleSelector.GetCurrentlySelectedVehicleId();
+            var carNumber = sectionEnduranceReceiver.VehicleSelector.ExtractCarNumber(oldVehicleId);
+            var top10Laps = GetTop10Laps(carNumber);
+            ShowLapDataGraph(top10Laps, vehicle10FastestLapsLineChart);
+        });
+        ShowFinalResultsForRace.onClick.AddListener(() => {
+            EnableTabPage(6);
+
+            // Clear old entries
+            for (int i = 1; i < Leaderboard.LeaderboardContainer.childCount; i++) {
+                Destroy(Leaderboard.LeaderboardContainer.GetChild(i).gameObject);
+            }
+
+            // Sort entries by position
+            var sortedEntries = new List<LeaderboardEntry>(Leaderboard.LeaderboardDict.Values);
+            sortedEntries.Sort((a, b) => a.position.CompareTo(b.position));
+
+            // Create UI rows
+            foreach (var e in sortedEntries) {
+                GameObject row = Instantiate(Leaderboard.LeaderboardRowPrefab, Leaderboard.LeaderboardContainer);
+                var texts = row.GetComponent<LeaderboardRow>();
+
+                texts.Position.text = e.position.ToString();
+                texts.Number.text = $"#{e.vehicle_id}";
+                texts.NumberOfLaps.text = $"{e.laps}";
+                texts.ElapsedTime.text = e.elapsed;
+                texts.GapToFirst.text = e.gap_first;
+                texts.GapToPrevious.text = e.gap_previous;
+                texts.BestLapNumber.text = e.best_lap_num.ToString();
+                texts.BestLapTime.text = e.best_lap_time;
+                texts.BestLapKmh.text = e.best_lap_kph.ToString();
+
+                // color row text if possible
+                if (sectionEnduranceReceiver.CarColor.ContainsKey(e.vehicle_id)) {
+                    var allTexts = row.GetComponentsInChildren<TextMeshProUGUI>();
+                    foreach (var text in allTexts) {
+                        text.color = sectionEnduranceReceiver.CarColor[e.vehicle_id];
+                    }
+                }
+            }
         });
     }
 
@@ -209,5 +259,32 @@ public class SectionEnduranceUI : MonoBehaviour {
 
         Debug.LogWarning($"Unrecognized lap time format: {lapTime}");
         return 0f;
+    }
+
+    private List<LapEvent> GetTop10Laps(string carNumber) {
+        if (!sectionEnduranceReceiver.CarLapData.ContainsKey(carNumber)) {
+            Debug.LogWarning($"No lap data for car #{carNumber}");
+            return new List<LapEvent>();
+        }
+
+        var laps = sectionEnduranceReceiver.CarLapData[carNumber];
+
+        // Filter out pit laps or invalid times
+        var validLaps = laps
+            .Where(l => !string.IsNullOrWhiteSpace(l.lap_time) && !l.pit)
+            .Select(l => new {
+                Lap = l,
+                TimeSec = ParseLapTimeToSeconds(l.lap_time)
+            })
+            .Where(x => x.TimeSec > 0 && x.TimeSec < 10000f)
+            .OrderBy(x => x.TimeSec)
+            .Take(10)
+            .Select(x => x.Lap)
+            .ToList();
+
+        Debug.Log($"Top 10 laps for car #{carNumber}: " +
+                  string.Join(", ", validLaps.Select(l => l.lap_time)));
+
+        return validLaps;
     }
 }

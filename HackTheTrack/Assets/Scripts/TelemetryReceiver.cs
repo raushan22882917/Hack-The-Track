@@ -65,7 +65,7 @@ public class TelemetryReceiver : MonoBehaviour {
     }
 
     private void OnDestroy() {
-        ws.CloseAsync();
+        ws?.CloseAsync();
     }
 
     public void Register(TelemetryVehiclePlayer v) {
