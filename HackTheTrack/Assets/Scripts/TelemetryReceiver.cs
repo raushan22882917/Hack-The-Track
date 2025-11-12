@@ -27,7 +27,7 @@ public class TelemetryReceiver : MonoBehaviour {
         GPSUtils.SetReference(33.530494689941406, -86.62052154541016);
 
         ws = new WebSocket(ServerUrl);
-        ws.OnOpen += (s, e) => Debug.Log($"Connected to websocket! {ServerUrl}");
+        ws.OnOpen += (s, e) => Debug.Log($"Connected to telemetry websocket! {ServerUrl}");
         ws.OnMessage += (s, e) => queue.Enqueue(e.Data);
         ws.OnError += (s, e) => Debug.LogError($"WebSocket error: {e.Message}");
         ws.OnClose += (s, e) => Debug.Log($"WebSocket closed: {e.Reason}");

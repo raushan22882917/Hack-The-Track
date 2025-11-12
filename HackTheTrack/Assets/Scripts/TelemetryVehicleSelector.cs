@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 public class TelemetryVehicleSelector : MonoBehaviour {
 
@@ -10,6 +11,15 @@ public class TelemetryVehicleSelector : MonoBehaviour {
 
     public CinemachineCamera[] CinemachineCams;
     public string[] CinemachineCamsLabels;
+
+    [Header("Player Controls")]
+    [SerializeField] private bool isPlayerCarActive;
+    [SerializeField] private GameObject playerCarObject;
+    [SerializeField] private CinemachineCamera playerCarFollowCamera;
+    [SerializeField] private CinemachineCamera playerCarCockpitCamera;
+    [SerializeField] private GameObject playerSpeedText;
+
+    private GameObject playerCarObjectRef;
 
     private List<TelemetryVehiclePlayer> vehicles = new List<TelemetryVehiclePlayer>();
     private int currentVehicleIndex = 0;
@@ -21,9 +31,56 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             CinemachineCams[i].Target.TrackingTarget = vehicles[currentVehicleIndex].GetCameraTarget();
         }
         TelemetryDisplay.CurrentActiveCameraValue.text = CinemachineCamsLabels[currentCameraIndex];
+
+        playerCarFollowCamera.gameObject.SetActive(isPlayerCarActive);
+        playerCarCockpitCamera.gameObject.SetActive(isPlayerCarActive);
+        playerSpeedText.SetActive(isPlayerCarActive);
     }
 
     private void Update() {
+
+        if (Keyboard.current.xKey.wasPressedThisFrame) {
+            isPlayerCarActive = !isPlayerCarActive;
+        }
+
+        if (!isPlayerCarActive && playerCarObjectRef) {
+            Destroy(playerCarObjectRef);
+
+            for (int i = 0; i < CinemachineCams.Length; i++) {
+                CinemachineCams[i].gameObject.SetActive(i == currentCameraIndex);
+            }
+
+            playerCarCockpitCamera.gameObject.SetActive(isPlayerCarActive);
+            playerCarFollowCamera.gameObject.SetActive(isPlayerCarActive);
+            playerSpeedText.SetActive(isPlayerCarActive);
+        }
+
+        if (isPlayerCarActive &&
+            (Keyboard.current.cKey.wasPressedThisFrame || Keyboard.current.vKey.wasPressedThisFrame)) {
+            playerCarCockpitCamera.gameObject.SetActive(!playerCarCockpitCamera.gameObject.activeSelf);
+            playerCarFollowCamera.gameObject.SetActive(!playerCarFollowCamera.gameObject.activeSelf);
+        }
+
+        if (isPlayerCarActive && !playerCarObjectRef) {
+            playerCarObjectRef = Instantiate(playerCarObject, Vector3.zero, Quaternion.identity);
+            var carController = playerCarObjectRef.GetComponentInChildren<PrometeoCarController>();
+            carController.carEngineSound.Play();
+            carController.carSpeedText = playerSpeedText.GetComponentInChildren<Text>();
+
+            for (int i = 0; i < CinemachineCams.Length; i++) {
+                CinemachineCams[i].gameObject.SetActive(false);
+            }
+
+            playerCarCockpitCamera.Target.TrackingTarget = carController.transform;
+            playerCarFollowCamera.Target.TrackingTarget = carController.transform;
+            playerCarFollowCamera.gameObject.SetActive(isPlayerCarActive);
+            playerSpeedText.SetActive(isPlayerCarActive);
+        }
+
+        if (isPlayerCarActive) {
+            return;
+        }
+
         if (Keyboard.current.rKey.wasPressedThisFrame && vehicles.Count > 0) {
             currentVehicleIndex = (currentVehicleIndex + 1) % vehicles.Count;
 

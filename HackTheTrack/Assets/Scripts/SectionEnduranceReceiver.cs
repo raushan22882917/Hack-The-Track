@@ -28,7 +28,7 @@ public class SectionEnduranceReceiver : MonoBehaviour {
 
     private void Start() {
         ws = new WebSocket(ServerUrl);
-        ws.OnOpen += (s, e) => Debug.Log($"Connected to websocket! {ServerUrl}");
+        ws.OnOpen += (s, e) => Debug.Log($"Connected to section endurance websocket! {ServerUrl}");
         ws.OnMessage += (s, e) => HandleMessage(e.Data);
         ws.ConnectAsync();
     }

@@ -22,35 +22,35 @@ async def broadcast_leaderboard(shutdown_event):
     df_records = await load_leaderboard_data()
 
     print("Broadcasting leaderboard data...")
-    while clients:
-        for row in df_records:
-            msg = {
-                "type": "leaderboard_entry",
-                "class_type": row.get("CLASS_TYPE"),
-                "position": int(row.get("POS")),
-                "pic": int(row.get("PIC")),
-                "vehicle_id": str(row.get("NUMBER")),
-                "vehicle": row.get("VEHICLE"),
-                "laps": int(row.get("LAPS")),
-                "elapsed": row.get("ELAPSED"),
-                "gap_first": row.get("GAP_FIRST"),
-                "gap_previous": row.get("GAP_PREVIOUS"),
-                "best_lap_num": int(row.get("BEST_LAP_NUM")),
-                "best_lap_time": row.get("BEST_LAP_TIME"),
-                "best_lap_kph": float(row.get("BEST_LAP_KPH")),
-            }
+    # while clients:
+    for row in df_records:
+        msg = {
+            "type": "leaderboard_entry",
+            "class_type": row.get("CLASS_TYPE"),
+            "position": int(row.get("POS")),
+            "pic": int(row.get("PIC")),
+            "vehicle_id": str(row.get("NUMBER")),
+            "vehicle": row.get("VEHICLE"),
+            "laps": int(row.get("LAPS")),
+            "elapsed": row.get("ELAPSED"),
+            "gap_first": row.get("GAP_FIRST"),
+            "gap_previous": row.get("GAP_PREVIOUS"),
+            "best_lap_num": int(row.get("BEST_LAP_NUM")),
+            "best_lap_time": row.get("BEST_LAP_TIME"),
+            "best_lap_kph": float(row.get("BEST_LAP_KPH")),
+        }
 
-            data = json.dumps(msg)
-            # send to all connected clients
-            for c in clients.copy():
-                asyncio.create_task(c.send(data))
+        data = json.dumps(msg)
+        # send to all connected clients
+        for c in clients.copy():
+            asyncio.create_task(c.send(data))
 
-            await asyncio.sleep(WAIT)
-
-        # optional: reload data periodically if the file is updated
         await asyncio.sleep(WAIT)
 
-    print("No clients connected — stopping leaderboard broadcast.")
+        # optional: reload data periodically if the file is updated
+        # await asyncio.sleep(WAIT)
+
+    print("Leaderboard event stream finished. Stopping leaderboard broadcast.")
     shutdown_event.set()
 
 
