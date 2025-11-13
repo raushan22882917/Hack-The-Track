@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using TMPro;
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -18,8 +20,18 @@ public class TelemetryVehicleSelector : MonoBehaviour {
     [SerializeField] private CinemachineCamera playerCarFollowCamera;
     [SerializeField] private CinemachineCamera playerCarCockpitCamera;
     [SerializeField] private GameObject playerSpeedText;
+    [SerializeField] private GameObject playerLapTimesParent;
+    [SerializeField] private TextMeshProUGUI playerBestTimeText;
+    [SerializeField] private TextMeshProUGUI playerCurrentTimeText;
+    [SerializeField] private TextMeshProUGUI playerSector3TimeText;
+    [SerializeField] private TextMeshProUGUI playerSector2TimeText;
+    [SerializeField] private TextMeshProUGUI playerSector1TimeText;
 
     private GameObject playerCarObjectRef;
+    private float currentLapTime;
+    private float currentSectorTime;
+    private float bestLapTime;
+    private bool startTimeRecording;
 
     private List<TelemetryVehiclePlayer> vehicles = new List<TelemetryVehiclePlayer>();
     private int currentVehicleIndex = 0;
@@ -35,6 +47,7 @@ public class TelemetryVehicleSelector : MonoBehaviour {
         playerCarFollowCamera.gameObject.SetActive(isPlayerCarActive);
         playerCarCockpitCamera.gameObject.SetActive(isPlayerCarActive);
         playerSpeedText.SetActive(isPlayerCarActive);
+        playerLapTimesParent.SetActive(isPlayerCarActive);
     }
 
     private void Update() {
@@ -53,6 +66,10 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             playerCarCockpitCamera.gameObject.SetActive(isPlayerCarActive);
             playerCarFollowCamera.gameObject.SetActive(isPlayerCarActive);
             playerSpeedText.SetActive(isPlayerCarActive);
+            playerLapTimesParent.SetActive(isPlayerCarActive);
+
+            currentLapTime = 0;
+            currentSectorTime = 0;
         }
 
         if (isPlayerCarActive &&
@@ -64,6 +81,7 @@ public class TelemetryVehicleSelector : MonoBehaviour {
         if (isPlayerCarActive && !playerCarObjectRef) {
             playerCarObjectRef = Instantiate(playerCarObject, Vector3.zero, Quaternion.identity);
             var carController = playerCarObjectRef.GetComponentInChildren<PrometeoCarController>();
+            carController.SetVehicleSelectorReference(this);
             carController.carEngineSound.Play();
             carController.carSpeedText = playerSpeedText.GetComponentInChildren<Text>();
 
@@ -75,6 +93,14 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             playerCarFollowCamera.Target.TrackingTarget = carController.transform;
             playerCarFollowCamera.gameObject.SetActive(isPlayerCarActive);
             playerSpeedText.SetActive(isPlayerCarActive);
+            playerLapTimesParent.SetActive(isPlayerCarActive);
+        }
+
+        if (startTimeRecording) {
+            currentSectorTime += Time.deltaTime;
+            currentLapTime += Time.deltaTime;
+            var timeSpan = TimeSpan.FromSeconds(currentLapTime);
+            playerCurrentTimeText.text = timeSpan.ToString("mm\\:ss\\.fff");
         }
 
         if (isPlayerCarActive) {
@@ -145,5 +171,37 @@ public class TelemetryVehicleSelector : MonoBehaviour {
         // Match last numeric segment, e.g. GR86-004-78 -> 78
         var match = Regex.Match(vehicleId, @"(\d+)$");
         return match.Success ? match.Value : vehicleId;
+    }
+
+    public void StartNewLap() {
+        currentLapTime = 0f;
+        startTimeRecording = true;
+    }
+
+    public void FinishLap() {
+        if (currentLapTime > 0 && (currentLapTime < bestLapTime || bestLapTime <= 0f)) {
+            bestLapTime = currentLapTime;
+        }
+        var timeSpan = TimeSpan.FromSeconds(bestLapTime);
+        playerBestTimeText.text = timeSpan.ToString("mm\\:ss\\.fff");
+    }
+
+    public void FinishSector1() {
+        var timeSpan = TimeSpan.FromSeconds(currentSectorTime);
+        playerSector1TimeText.text = timeSpan.ToString("mm\\:ss\\.fff");
+    }
+
+    public void StartSector() {
+        currentSectorTime = 0f;
+    }
+
+    public void FinishSector2() {
+        var timeSpan = TimeSpan.FromSeconds(currentSectorTime);
+        playerSector2TimeText.text = timeSpan.ToString("mm\\:ss\\.fff");
+    }
+
+    public void FinishSector3() {
+        var timeSpan = TimeSpan.FromSeconds(currentSectorTime);
+        playerSector3TimeText.text = timeSpan.ToString("mm\\:ss\\.fff");
     }
 }

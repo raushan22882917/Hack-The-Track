@@ -137,6 +137,10 @@ public class PrometeoCarController : MonoBehaviour {
     WheelFrictionCurve RRwheelFriction;
     float RRWextremumSlip;
 
+
+    TelemetryVehicleSelector vehicleSelector;
+
+
     // Start is called before the first frame update
     void Start() {
         //In this part, we set the 'carRigidbody' value with the Rigidbody attached to this
@@ -688,4 +692,24 @@ public class PrometeoCarController : MonoBehaviour {
         }
     }
 
+    public void SetVehicleSelectorReference(TelemetryVehicleSelector vehicleSelector) {
+        this.vehicleSelector = vehicleSelector;
+    }
+
+    private void OnTriggerEnter(Collider other) {
+        if (other.name.Contains("Start")) {
+            vehicleSelector.FinishSector3();
+            vehicleSelector.FinishLap();
+            vehicleSelector.StartNewLap();
+            vehicleSelector.StartSector();
+        }
+        if (other.name.Contains("Sector1")) {
+            vehicleSelector.FinishSector1();
+            vehicleSelector.StartSector();
+        }
+        if (other.name.Contains("Sector2")) {
+            vehicleSelector.FinishSector2();
+            vehicleSelector.StartSector();
+        }
+    }
 }
