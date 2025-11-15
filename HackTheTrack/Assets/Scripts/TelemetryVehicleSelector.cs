@@ -5,6 +5,7 @@ using TMPro;
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.XR;
 using UnityEngine.UI;
 
 public class TelemetryVehicleSelector : MonoBehaviour {
@@ -78,6 +79,11 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             playerCarFollowCamera.gameObject.SetActive(!playerCarFollowCamera.gameObject.activeSelf);
         }
 
+        if (isPlayerCarActive && (Keyboard.current.ctrlKey.wasPressedThisFrame || Keyboard.current.ctrlKey.wasReleasedThisFrame)) {
+            var carFollow = playerCarFollowCamera.gameObject.GetComponent<CinemachineFollow>();
+            carFollow.FollowOffset = new Vector3(carFollow.FollowOffset.x, carFollow.FollowOffset.y, carFollow.FollowOffset.z * (-1));
+        }
+
         if (isPlayerCarActive && !playerCarObjectRef) {
             playerCarObjectRef = Instantiate(playerCarObject, Vector3.zero, Quaternion.identity);
             var carController = playerCarObjectRef.GetComponentInChildren<PrometeoCarController>();
@@ -103,10 +109,6 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             playerCurrentTimeText.text = timeSpan.ToString("mm\\:ss\\.fff");
         }
 
-        if (isPlayerCarActive) {
-            return;
-        }
-
         if (Keyboard.current.rKey.wasPressedThisFrame && vehicles.Count > 0) {
             currentVehicleIndex = (currentVehicleIndex + 1) % vehicles.Count;
 
@@ -115,16 +117,20 @@ public class TelemetryVehicleSelector : MonoBehaviour {
             }
         }
 
+        if (currentVehicleIndex >= 0) {
+            vehicles[currentVehicleIndex].UpdateUIValues();
+        }
+
+        if (isPlayerCarActive) {
+            return;
+        }
+
         if (Keyboard.current.cKey.wasPressedThisFrame && vehicles.Count > 0) {
             SelectNextCamera();
         }
 
         if (Keyboard.current.vKey.wasPressedThisFrame && vehicles.Count > 0) {
             SelectPreviousCamera();
-        }
-
-        if (currentVehicleIndex >= 0) {
-            vehicles[currentVehicleIndex].UpdateUIValues();
         }
     }
 

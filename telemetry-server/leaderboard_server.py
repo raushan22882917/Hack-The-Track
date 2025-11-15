@@ -80,7 +80,7 @@ async def main():
         return await handle_client(ws, shutdown_event)
 
     server = await websockets.serve(client_handler, "localhost", PORT)
-    print(f"Leaderboard server running on ws://localhost:{PORT}")
+    print(f"Leaderboard server running on ws://localhost:{PORT}", flush=True)
 
     await shutdown_event.wait()
 

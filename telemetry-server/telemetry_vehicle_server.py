@@ -193,13 +193,13 @@ async def process_control(msg):
             is_paused = False
             is_reversed = False
             master_start_time = asyncio.get_event_loop().time()
-            print("▶️ Playback resumed")
+            print("Playback resumed")
     elif cmd == "reverse":
         if is_paused and has_started:
             is_paused = False
             is_reversed = True
             master_start_time = asyncio.get_event_loop().time()
-            print("⏪ Reverse playback started")
+            print("Reverse playback started")
     elif cmd == "restart":
         is_paused = True
         is_reversed = False
@@ -207,7 +207,7 @@ async def process_control(msg):
         playback_start_timestamp = rows[0]["meta_time"]
         pending_rows = rows.copy()
         master_start_time = None
-        print("🔁 Playback restarted")
+        print("Playback restarted")
     elif cmd == "pause":
         if not is_paused:
             elapsed = asyncio.get_event_loop().time() - master_start_time
@@ -215,7 +215,7 @@ async def process_control(msg):
             playback_start_timestamp += pd.to_timedelta(delta, unit="s")
             is_paused = True
             master_start_time = None
-            print("⏸️ Paused")
+            print("Paused")
     elif cmd == "speed":
         val = float(msg.get("value", 1.0))
         if not is_paused and master_start_time:
@@ -224,11 +224,11 @@ async def process_control(msg):
             playback_start_timestamp += pd.to_timedelta(delta, unit="s")
             master_start_time = asyncio.get_event_loop().time()
         playback_speed = val
-        print(f"⏩ Speed set to {playback_speed}x")
+        print(f"Speed set to {playback_speed}x")
     elif cmd == "seek":
         playback_start_timestamp = dtparser.parse(msg["timestamp"])
         master_start_time = asyncio.get_event_loop().time()
-        print(f"⏩ Seek to {playback_start_timestamp}")
+        print(f"Seek to {playback_start_timestamp}")
 
 async def main():
     shutdown_event = asyncio.Event()
@@ -238,7 +238,7 @@ async def main():
         return await handle_client(ws, shutdown_event)
     
     server = await websockets.serve(client_wrapper, "localhost", PORT)
-    print(f"Telemetry server running on ws://localhost:{PORT}")
+    print(f"Telemetry server running on ws://localhost:{PORT}", flush=True)
 
     await shutdown_event.wait()
 

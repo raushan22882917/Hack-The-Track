@@ -81,7 +81,7 @@ async def main():
         return await handle_client(ws, shutdown_event, race_task_ref)
     
     server = await websockets.serve(client_handler, "localhost", PORT)
-    print(f"SectionEndurance server running on ws://localhost:{PORT}")
+    print(f"SectionEndurance server running on ws://localhost:{PORT}", flush=True)
 
     # await race_event_stream()
 

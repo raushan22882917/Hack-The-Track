@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -18,7 +19,13 @@ public class SectionEnduranceUI : MonoBehaviour {
     [SerializeField] private Button ShowVehicleLapTimes;
     [SerializeField] private Button ShowCurrentLapTimes;
     [SerializeField] private Button ShowAllLapTimesForCurrentVehicle;
+    [SerializeField] private Button ShowAllSector1TimesForCurrentVehicle;
+    [SerializeField] private Button ShowAllSector2TimesForCurrentVehicle;
+    [SerializeField] private Button ShowAllSector3TimesForCurrentVehicle;
     [SerializeField] private Button ShowCurrentLapTimesForAllVehicles;
+    [SerializeField] private Button ShowCurrentSector1TimesForAllVehicles;
+    [SerializeField] private Button ShowCurrentSector2TimesForAllVehicles;
+    [SerializeField] private Button ShowCurrentSector3TimesForAllVehicles;
     [SerializeField] private Button ShowAllLapTimesForAllVehicles;
     [SerializeField] private Button Show10FastestLapTimesForVehicle;
 
@@ -56,11 +63,50 @@ public class SectionEnduranceUI : MonoBehaviour {
             var carNumber = sectionEnduranceReceiver.VehicleSelector.ExtractCarNumber(oldVehicleId);
             ShowLapDataGraph(sectionEnduranceReceiver.CarLapData[carNumber], vehicleLineChart);
         });
+        ShowAllSector1TimesForCurrentVehicle.onClick.AddListener(() => {
+            EnableTabPage(1);
+
+            oldVehicleId = sectionEnduranceReceiver.VehicleSelector.GetCurrentlySelectedVehicleId();
+            var carNumber = sectionEnduranceReceiver.VehicleSelector.ExtractCarNumber(oldVehicleId);
+            ShowLapDataGraph(sectionEnduranceReceiver.CarLapData[carNumber], vehicleLineChart, false, 0);
+        });
+        ShowAllSector2TimesForCurrentVehicle.onClick.AddListener(() => {
+            EnableTabPage(1);
+
+            oldVehicleId = sectionEnduranceReceiver.VehicleSelector.GetCurrentlySelectedVehicleId();
+            var carNumber = sectionEnduranceReceiver.VehicleSelector.ExtractCarNumber(oldVehicleId);
+            ShowLapDataGraph(sectionEnduranceReceiver.CarLapData[carNumber], vehicleLineChart, false, 1);
+        });
+        ShowAllSector3TimesForCurrentVehicle.onClick.AddListener(() => {
+            EnableTabPage(1);
+
+            oldVehicleId = sectionEnduranceReceiver.VehicleSelector.GetCurrentlySelectedVehicleId();
+            var carNumber = sectionEnduranceReceiver.VehicleSelector.ExtractCarNumber(oldVehicleId);
+            ShowLapDataGraph(sectionEnduranceReceiver.CarLapData[carNumber], vehicleLineChart, false, 2);
+        });
         ShowCurrentLapTimesForAllVehicles.onClick.AddListener(() => {
             EnableTabPage(2);
             var currentLapNumber = int.Parse(telemetryUI.CurrentLap.text);
             var currentLapNumberData = sectionEnduranceReceiver.GetLapEventsForCurrentLap(currentLapNumber);
             ShowLapDataGraph(currentLapNumberData, currentLapAllVehiclesLineChart, true);
+        });
+        ShowCurrentSector1TimesForAllVehicles.onClick.AddListener(() => {
+            EnableTabPage(2);
+            var currentLapNumber = int.Parse(telemetryUI.CurrentLap.text);
+            var currentLapNumberData = sectionEnduranceReceiver.GetLapEventsForCurrentLap(currentLapNumber);
+            ShowLapDataGraph(currentLapNumberData, currentLapAllVehiclesLineChart, true, 0);
+        });
+        ShowCurrentSector2TimesForAllVehicles.onClick.AddListener(() => {
+            EnableTabPage(2);
+            var currentLapNumber = int.Parse(telemetryUI.CurrentLap.text);
+            var currentLapNumberData = sectionEnduranceReceiver.GetLapEventsForCurrentLap(currentLapNumber);
+            ShowLapDataGraph(currentLapNumberData, currentLapAllVehiclesLineChart, true, 1);
+        });
+        ShowCurrentSector3TimesForAllVehicles.onClick.AddListener(() => {
+            EnableTabPage(2);
+            var currentLapNumber = int.Parse(telemetryUI.CurrentLap.text);
+            var currentLapNumberData = sectionEnduranceReceiver.GetLapEventsForCurrentLap(currentLapNumber);
+            ShowLapDataGraph(currentLapNumberData, currentLapAllVehiclesLineChart, true, 2);
         });
         ShowAllLapTimesForAllVehicles.onClick.AddListener(() => {
             EnableTabPage(3);
@@ -203,7 +249,7 @@ public class SectionEnduranceUI : MonoBehaviour {
         }
     }
 
-    private void ShowLapDataGraph(List<LapEvent> lapEvents, LineChart lineChart, bool showVehicleId = false) {
+    private void ShowLapDataGraph(List<LapEvent> lapEvents, LineChart lineChart, bool showVehicleId = false, int sectorId = -1) {
 
         lineChart.ClearData();
 
@@ -222,8 +268,18 @@ public class SectionEnduranceUI : MonoBehaviour {
                 lineChart.AddXAxisData(lapEvent.vehicle_id);
             }
 
-            var seconds = ParseLapTimeToSeconds(lapEvent.lap_time);
-            lineChart.series[0].AddXYData(lapEvent.lap, seconds);
+            switch (sectorId) {
+                case 0:
+                case 1:
+                case 2:
+                    var sectorSeconds = TimeSpan.FromSeconds(lapEvent.sector_times[sectorId]);
+                    lineChart.series[0].AddXYData(lapEvent.lap, sectorSeconds.TotalSeconds);
+                    break;
+                default:
+                    var seconds = ParseLapTimeToSeconds(lapEvent.lap_time);
+                    lineChart.series[0].AddXYData(lapEvent.lap, seconds);
+                    break;
+            }
 
             if (showVehicleId && sectionEnduranceReceiver.CarColor.ContainsKey(lapEvent.vehicle_id)) {
                 var serieData = lineChart.series[0].data[^1];
