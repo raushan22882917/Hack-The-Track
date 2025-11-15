@@ -190,3 +190,11 @@ Telemetry Rush demonstrates how data, visualization and interactivity can merge 
 
 ## 📜 License
 MIT License - free to use, modify, and share.
+
+---
+
+## 📦 Used Assets
+- XCharts for Unity - https://github.com/XCharts-Team/XCharts
+- Toyota Car Model - https://sketchfab.com/3d-models/toyota-gt86-stock-c4732cfe6f65408eb387668b7a36f768
+- Prometeo Car Controller - https://assetstore.unity.com/packages/tools/physics/prometeo-car-controller-209444
+- Cartoon Race Track - https://assetstore.unity.com/packages/3d/environments/roadways/cartoon-race-track-oval-175061
