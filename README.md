@@ -5,7 +5,7 @@
 Telemetry Rush is a Unity‑based racing simulation platform that integrates external Python servers to replay, visualize, challenge and analyze motorsport telemetry data. The Python servers are used to simulate live streaming data. In a production version, these servers and the data pre-processing could be replaces with websocket servers, which deliver live data from an actual race.
 Built during a hackathon (HackTheTrack by Toyota Gazoo Racing), it combines **live data streaming**, **racing game**, **vehicle visualization**, **weather effects**, and **leaderboard tracking** into a single interactive Windows application.
 
-A Youtube video explaining and walking through the project can be found here
+A Youtube video explaining and walking through the project can be found here - https://www.youtube.com/watch?v=EZTRW3_jHg0
 
 ---
 
@@ -153,12 +153,19 @@ Place the Python server executables (`leaderboard_server.exe`, `section_enduranc
 ---
 
 ## 🛠️ Installation (for entertainment purposes)
-1. Download latest release from releases section.
-2. Extract everything into one folder.
-3. Start HackTheTrack.exe.
-4. When the CMD windows appear, make sure to wait for every server to be started, indicated by the text. This can take a few minutes, especially on older machines.
-5. Click on the green button in the main menu, to start Telemetry Rush.
-6. Have fun exploring, infering, guessing and playing with the data.
+1. Download the current build .zip file (only for Windows 10 and 11) from the Github releases section (https://github.com/FireDragonGameStudio/hack-the-track/releases) and extract it into a folder on your system.
+2. All necessary files are already in the package. Click on HackTheTrack.exe to start the application.
+3. Three CMD windows will pop up and the main menu will be shown. Wait until every CMD windows shows a text, that states "xxxx server running on ws://localhost:xxxx". Please consider, that the starting process of the servers may take longer on older systems. For instance: It took about 4 minutes to start the servers on my 7 year old Surface Pro 5, but on my 2 year old MSI Vector 17 it only takes about 20 seconds. <img width="1540" height="746" alt="Screenshot 2025-11-16 213021" src="https://github.com/user-attachments/assets/d31e169f-8e22-4e8d-8ab1-2af8ecc4055c" />
+
+4. After all three servers are ready, click on the green button and the main scene will be loaded.
+5. Click on the green play button on the upper left to start the streaming.
+6. You can pause the streaming, when clicking on the pause button on the upper left.
+7. Change cameras by pressing C or V.
+8. Change the currently selected vehicle by pressing R.
+9. Spawn/Unspawn your own car by pressing X. Control the car with WASD and SPACE.
+10. Pressing TAB will show the statistics menu with interesting data and charts. Hide it by pressing TAB again.
+11. When the statistics menu is active, all other commands will still work.
+12. Click on the green buttons in the upper bar, to show the respective data.
 
 ---
 
