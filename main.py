@@ -1225,15 +1225,35 @@ async def websocket_telemetry(websocket: WebSocket):
     """WebSocket endpoint for telemetry data"""
     global telemetry_broadcast_task, telemetry_rows, telemetry_is_paused
     
-    await websocket.accept()
-    telemetry_connections.append(websocket)
-    print(f"✅ Client connected to telemetry WebSocket (total: {len(telemetry_connections)})")
+    try:
+        await websocket.accept()
+        telemetry_connections.append(websocket)
+        print(f"✅ Client connected to telemetry WebSocket (total: {len(telemetry_connections)})")
+    except Exception as e:
+        print(f"❌ Failed to accept WebSocket connection: {e}")
+        return
     
     # Start broadcast loop if not already running
     if telemetry_broadcast_task is None or telemetry_broadcast_task.done():
         telemetry_broadcast_task = asyncio.create_task(telemetry_broadcast_loop())
         # Wait a moment for data to load
         await asyncio.sleep(0.5)
+    
+    # Keepalive ping task to prevent connection timeout
+    async def keepalive_ping():
+        """Send periodic ping to keep WebSocket connection alive"""
+        while websocket in telemetry_connections:
+            try:
+                await asyncio.sleep(30)  # Ping every 30 seconds
+                if websocket in telemetry_connections:
+                    await websocket.send_json({"type": "ping", "timestamp": datetime.now().isoformat()})
+            except (WebSocketDisconnect, RuntimeError, ConnectionError, OSError):
+                break
+            except Exception:
+                # Ignore other errors, connection will be cleaned up
+                break
+    
+    ping_task = asyncio.create_task(keepalive_ping())
     
     # Send initial connection message with current state
     try:
@@ -1267,6 +1287,9 @@ async def websocket_telemetry(websocket: WebSocket):
                             }))
                         except Exception:
                             pass  # Don't fail if we can't send ack
+                    elif msg.get("type") == "pong":
+                        # Client responded to ping - connection is alive
+                        pass
                 except json.JSONDecodeError:
                     print(f"⚠️ Invalid JSON received from WebSocket client: {data}")
             except WebSocketDisconnect:
@@ -1281,6 +1304,7 @@ async def websocket_telemetry(websocket: WebSocket):
     except Exception as e:
         print(f"⚠️ WebSocket error: {e}")
     finally:
+        ping_task.cancel()  # Stop keepalive ping
         if websocket in telemetry_connections:
             telemetry_connections.remove(websocket)
         print(f"Client disconnected from telemetry WebSocket (total: {len(telemetry_connections)})")
@@ -1295,6 +1319,9 @@ async def websocket_endurance(websocket: WebSocket):
         await websocket.accept()
         endurance_connections.append(websocket)
         print(f"✅ Client connected to endurance WebSocket (total: {len(endurance_connections)})")
+    except Exception as e:
+        print(f"❌ Failed to accept WebSocket connection: {e}")
+        return
         
         # Start broadcast loop if not already running
         if endurance_broadcast_task is None or endurance_broadcast_task.done():
@@ -1340,6 +1367,9 @@ async def websocket_leaderboard(websocket: WebSocket):
         await websocket.accept()
         leaderboard_connections.append(websocket)
         print(f"✅ Client connected to leaderboard WebSocket (total: {len(leaderboard_connections)})")
+    except Exception as e:
+        print(f"❌ Failed to accept WebSocket connection: {e}")
+        return
         
         # Start broadcast loop if not already running
         if leaderboard_broadcast_task is None or leaderboard_broadcast_task.done():
