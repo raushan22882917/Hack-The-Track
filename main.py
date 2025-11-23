@@ -3,19 +3,18 @@ Telemetry Rush - Unified Backend Server
 All services consolidated into one FastAPI application running on port 8000
 
 Features:
-- Server-Sent Events (SSE) for real-time data streaming
 - REST API endpoints for controls and data access
 - Telemetry, Endurance, and Leaderboard services
 - Telemetry preprocessing (converts raw telemetry data to per-vehicle CSVs)
+- Real-time data via polling REST endpoints
 - All running on a single port (8000)
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 import asyncio
 import json
-from typing import Dict, List, Optional, AsyncGenerator
+from typing import Dict, List, Optional
 from datetime import datetime
 import uvicorn
 import pandas as pd
@@ -73,7 +72,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connection tracking removed - using SSE instead of WebSocket
+# Connection tracking removed - using pure REST API with polling
 
 # Data cache for REST API
 telemetry_cache: Dict = {}
@@ -628,7 +627,7 @@ async def telemetry_broadcast_loop():
             data = json.dumps(msg)
             telemetry_cache = msg
             
-            # Data is sent via SSE streams (no WebSocket connections to manage)
+            # Data is cached and served via REST API (clients poll for updates)
 
         # End condition
         if (not telemetry_pending_rows and not telemetry_is_reversed) or (not to_emit and telemetry_is_reversed):
@@ -637,7 +636,7 @@ async def telemetry_broadcast_loop():
                 "type": "telemetry_end",
                 "timestamp": sim_time.isoformat()
             }
-            # End message is sent via SSE stream (no WebSocket connections to manage)
+            # End message is cached and served via REST API
             telemetry_is_paused = True
             telemetry_master_start_time = None
 
@@ -719,7 +718,7 @@ async def endurance_broadcast_loop():
     try:
         # Use itertuples() instead of iterrows() for 10-100x speedup
         for row in endurance_df.itertuples():
-            # Always process data for SSE streams
+            # Always process data for REST API cache
             #     await asyncio.sleep(0.1)
             #     continue
 
@@ -743,7 +742,7 @@ async def endurance_broadcast_loop():
                 data = json.dumps(msg)
                 endurance_cache.append(msg)
                 
-                # Data is sent via SSE streams (no WebSocket connections to manage)
+                # Data is cached and served via REST API (clients poll for updates)
 
                 await asyncio.sleep(wait)
             except Exception as e:
@@ -780,7 +779,7 @@ async def leaderboard_broadcast_loop():
 
     try:
         for row in leaderboard_df.itertuples():
-            # Always process data for SSE streams
+            # Always process data for REST API cache
             #     await asyncio.sleep(0.1)
             #     continue
 
@@ -809,7 +808,7 @@ async def leaderboard_broadcast_loop():
                 else:
                     leaderboard_cache.append(msg)
                 
-                # Data is sent via SSE streams (no WebSocket connections to manage)
+                # Data is cached and served via REST API (clients poll for updates)
 
                 await asyncio.sleep(wait)
             except Exception as e:
@@ -835,11 +834,6 @@ async def root():
         "message": "Telemetry Rush API - Integrated (All on Port 8000)",
         "version": "2.0.0",
         "endpoints": {
-            "sse": {
-                "telemetry": "/sse/telemetry",
-                "endurance": "/sse/endurance",
-                "leaderboard": "/sse/leaderboard"
-            },
             "rest": {
                 "telemetry": "/api/telemetry",
                 "endurance": "/api/endurance",
@@ -847,7 +841,8 @@ async def root():
                 "health": "/api/health",
                 "preprocess": "/api/preprocess",
                 "control": "/api/control"
-            }
+            },
+            "note": "Poll REST endpoints for real-time updates. Use /api/control for playback controls."
         }
     }
 
@@ -868,7 +863,14 @@ async def health_check():
 
 @app.get("/api/telemetry")
 async def get_telemetry():
-    """Get latest telemetry data"""
+    """Get latest telemetry data - Poll this endpoint for updates"""
+    global telemetry_broadcast_task
+    
+    # Start broadcast loop if not already running
+    if telemetry_broadcast_task is None or telemetry_broadcast_task.done():
+        telemetry_broadcast_task = asyncio.create_task(telemetry_broadcast_loop())
+        print("Started telemetry broadcast loop for REST API")
+    
     if telemetry_cache:
         return telemetry_cache
     
@@ -879,7 +881,7 @@ async def get_telemetry():
             "row_count": len(telemetry_rows),
             "has_data": True,
             "paused": telemetry_is_paused,
-            "suggestion": "Connect to SSE /sse/telemetry or use REST /api/control to start playback"
+            "suggestion": "Poll /api/telemetry for updates. Use /api/control to start playback."
         }
     
     return {
@@ -891,13 +893,27 @@ async def get_telemetry():
 
 @app.get("/api/endurance")
 async def get_endurance():
-    """Get endurance/lap event data"""
+    """Get endurance/lap event data - Poll this endpoint for updates"""
+    global endurance_broadcast_task
+    
+    # Start broadcast loop if not already running
+    if endurance_broadcast_task is None or endurance_broadcast_task.done():
+        endurance_broadcast_task = asyncio.create_task(endurance_broadcast_loop())
+        print("Started endurance broadcast loop for REST API")
+    
     return {"events": endurance_cache, "count": len(endurance_cache)}
 
 
 @app.get("/api/leaderboard")
 async def get_leaderboard():
-    """Get leaderboard data"""
+    """Get leaderboard data - Poll this endpoint for updates"""
+    global leaderboard_broadcast_task
+    
+    # Start broadcast loop if not already running
+    if leaderboard_broadcast_task is None or leaderboard_broadcast_task.done():
+        leaderboard_broadcast_task = asyncio.create_task(leaderboard_broadcast_loop())
+        print("Started leaderboard broadcast loop for REST API")
+    
     if not leaderboard_data_loaded:
         return {
             "leaderboard": [],
@@ -912,7 +928,7 @@ async def get_leaderboard():
             "count": 0,
             "message": "No leaderboard entries in cache yet",
             "has_data": True,
-            "suggestion": "Connect to SSE /sse/leaderboard to receive entries"
+            "suggestion": "Poll /api/leaderboard for updates"
         }
     
     return {"leaderboard": leaderboard_cache, "count": len(leaderboard_cache)}
@@ -960,201 +976,9 @@ async def preprocess_telemetry_endpoint(request: dict = None):
     return result
 
 
-# ==================== SERVER-SENT EVENTS (SSE) ENDPOINTS ====================
-
-async def telemetry_sse_stream() -> AsyncGenerator[str, None]:
-    """Stream telemetry data via Server-Sent Events"""
-    global telemetry_broadcast_task, telemetry_cache, telemetry_is_paused, telemetry_has_started
-    
-    # Start broadcast loop if not already running
-    if telemetry_broadcast_task is None or telemetry_broadcast_task.done():
-        telemetry_broadcast_task = asyncio.create_task(telemetry_broadcast_loop())
-        print("Started telemetry broadcast loop for SSE")
-        # Wait a moment for the broadcast loop to start loading data
-        await asyncio.sleep(0.5)
-    
-    # Auto-start playback if not started yet and we have data
-    if not telemetry_has_started and telemetry_rows:
-        print("Auto-starting telemetry playback for SSE client")
-        await process_telemetry_control({"cmd": "play"})
-    
-    # Check if CSV files exist before warning
-    project_root = get_project_root()
-    input_dir = project_root / "logs" / "vehicles"
-    vehicle_files = glob.glob(str(input_dir / "*.csv"))
-    files_exist = len(vehicle_files) > 0
-    
-    # Send initial connection message with current state
-    has_data = len(telemetry_rows) > 0
-    try:
-        yield f"data: {json.dumps({'type': 'connected', 'message': 'Telemetry SSE stream started', 'paused': telemetry_is_paused, 'has_data': has_data, 'row_count': len(telemetry_rows)})}\n\n"
-    except (GeneratorExit, StopAsyncIteration, BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
-        # Client disconnected immediately - exit gracefully
-        return
-    
-    # Only warn if files exist but data still isn't loaded (after waiting)
-    if not has_data and files_exist:
-        print("⚠️ WARNING: CSV files found but no telemetry data loaded yet. The broadcast loop may still be loading data.")
-    elif not has_data and not files_exist:
-        print("⚠️ WARNING: No telemetry data loaded! Check CSV files in logs/vehicles/")
-    
-    last_sent = None
-    last_sent_hash = None
-    empty_count = 0
-    while True:
-        try:
-            # Check if we have new telemetry data
-            if telemetry_cache:
-                # Use hash to detect changes more reliably
-                cache_hash = hash(json.dumps(telemetry_cache, sort_keys=True))
-                if cache_hash != last_sent_hash:
-                    data = json.dumps(telemetry_cache)
-                    yield f"data: {data}\n\n"
-                    last_sent = telemetry_cache
-                    last_sent_hash = cache_hash
-                    empty_count = 0
-            else:
-                # Send status update if cache is empty (playback might be paused or no data)
-                empty_count += 1
-                if empty_count % 100 == 0:  # Only send status every 100 iterations to avoid spam
-                    status_msg = {
-                        'type': 'status',
-                        'message': 'No telemetry data available',
-                        'paused': telemetry_is_paused,
-                        'cache_empty': True
-                    }
-                    yield f"data: {json.dumps(status_msg)}\n\n"
-            
-            await asyncio.sleep(0.016)  # ~60Hz
-        except (GeneratorExit, StopAsyncIteration, BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
-            # Client disconnected - this is normal, especially on Windows
-            # RuntimeError can occur when trying to send to a closed connection
-            break
-        except Exception as e:
-            # Only log non-connection errors
-            error_str = str(e).lower()
-            if "connection" not in error_str and "socket" not in error_str and "broken pipe" not in error_str and "send" not in error_str:
-                print(f"SSE telemetry error: {e}")
-            # Don't yield error messages for connection issues - just break
-            break
-
-
-async def endurance_sse_stream() -> AsyncGenerator[str, None]:
-    """Stream endurance data via Server-Sent Events"""
-    global endurance_broadcast_task, endurance_cache
-    
-    # Start broadcast loop if not already running
-    if endurance_broadcast_task is None or endurance_broadcast_task.done():
-        endurance_broadcast_task = asyncio.create_task(endurance_broadcast_loop())
-    
-    # Send initial connection message
-    try:
-        yield f"data: {json.dumps({'type': 'connected', 'message': 'Endurance SSE stream started'})}\n\n"
-    except (GeneratorExit, StopAsyncIteration, BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
-        # Client disconnected immediately - exit gracefully
-        return
-    
-    last_count = 0
-    while True:
-        try:
-            # Send new events
-            if len(endurance_cache) > last_count:
-                for event in endurance_cache[last_count:]:
-                    data = json.dumps(event)
-                    yield f"data: {data}\n\n"
-                last_count = len(endurance_cache)
-            
-            await asyncio.sleep(0.1)
-        except (GeneratorExit, StopAsyncIteration, BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
-            # Client disconnected - this is normal
-            break
-        except Exception as e:
-            # Only log non-connection errors
-            error_str = str(e).lower()
-            if "connection" not in error_str and "socket" not in error_str and "broken pipe" not in error_str and "send" not in error_str:
-                print(f"SSE endurance error: {e}")
-            # Don't try to send error messages if connection is broken
-            break
-
-
-async def leaderboard_sse_stream() -> AsyncGenerator[str, None]:
-    """Stream leaderboard data via Server-Sent Events"""
-    global leaderboard_broadcast_task, leaderboard_cache
-    
-    # Start broadcast loop if not already running
-    if leaderboard_broadcast_task is None or leaderboard_broadcast_task.done():
-        leaderboard_broadcast_task = asyncio.create_task(leaderboard_broadcast_loop())
-    
-    # Send initial connection message
-    try:
-        yield f"data: {json.dumps({'type': 'connected', 'message': 'Leaderboard SSE stream started'})}\n\n"
-    except (GeneratorExit, StopAsyncIteration, BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
-        # Client disconnected immediately - exit gracefully
-        return
-    
-    last_count = 0
-    while True:
-        try:
-            # Send new entries
-            if len(leaderboard_cache) > last_count:
-                for entry in leaderboard_cache[last_count:]:
-                    data = json.dumps(entry)
-                    yield f"data: {data}\n\n"
-                last_count = len(leaderboard_cache)
-            
-            await asyncio.sleep(0.1)
-        except (GeneratorExit, StopAsyncIteration, BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
-            # Client disconnected - this is normal
-            break
-        except Exception as e:
-            # Only log non-connection errors
-            error_str = str(e).lower()
-            if "connection" not in error_str and "socket" not in error_str and "broken pipe" not in error_str and "send" not in error_str:
-                print(f"SSE leaderboard error: {e}")
-            # Don't try to send error messages if connection is broken
-            break
-
-
-@app.get("/sse/telemetry")
-async def sse_telemetry():
-    """Server-Sent Events endpoint for telemetry data"""
-    return StreamingResponse(
-        telemetry_sse_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
-
-
-@app.get("/sse/endurance")
-async def sse_endurance():
-    """Server-Sent Events endpoint for endurance data"""
-    return StreamingResponse(
-        endurance_sse_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
-
-
-@app.get("/sse/leaderboard")
-async def sse_leaderboard():
-    """Server-Sent Events endpoint for leaderboard data"""
-    return StreamingResponse(
-        leaderboard_sse_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
+# ==================== REST API ONLY - NO SSE/WEBSOCKET ====================
+# Broadcast loops run in background to update cache
+# Clients poll REST endpoints for updates
 
 
 # ==================== STARTUP/SHUTDOWN ====================
@@ -1174,18 +998,15 @@ async def startup_event():
     asyncio.create_task(load_leaderboard_data())
     
     print("✅ Server is ready and listening (data loading in background)")
-    print("\n✅ Server-Sent Events (SSE) - Real-time streaming:")
-    print("   - http://127.0.0.1:8000/sse/telemetry")
-    print("   - http://127.0.0.1:8000/sse/endurance")
-    print("   - http://127.0.0.1:8000/sse/leaderboard")
-    print("\n✅ REST API Endpoints:")
-    print("   - http://127.0.0.1:8000/api/telemetry")
-    print("   - http://127.0.0.1:8000/api/endurance")
-    print("   - http://127.0.0.1:8000/api/leaderboard")
-    print("   - http://127.0.0.1:8000/api/health")
-    print("   - http://127.0.0.1:8000/api/preprocess (POST)")
-    print("   - http://127.0.0.1:8000/api/control (POST)")
+    print("\n✅ REST API Endpoints (Poll for updates):")
+    print("   GET  - http://127.0.0.1:8000/api/telemetry")
+    print("   GET  - http://127.0.0.1:8000/api/endurance")
+    print("   GET  - http://127.0.0.1:8000/api/leaderboard")
+    print("   GET  - http://127.0.0.1:8000/api/health")
+    print("   POST - http://127.0.0.1:8000/api/control (play/pause/speed/seek)")
+    print("   POST - http://127.0.0.1:8000/api/preprocess")
     print("\n✅ API Documentation: http://127.0.0.1:8000/docs")
+    print("\n💡 Note: Poll REST endpoints for real-time updates. Broadcast loops start automatically.")
     print("="*60 + "\n")
 
 
