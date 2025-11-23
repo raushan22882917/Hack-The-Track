@@ -1,0 +1,32 @@
+# Render Blueprint Configuration
+# Deploy both backend and frontend services
+
+services:
+  # FastAPI Backend Service
+  - type: web
+    name: telemetry-rush-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r fastapi-server/requirements.txt
+    startCommand: cd fastapi-server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+  # React Frontend Static Site
+  - type: web
+    name: telemetry-rush-frontend
+    runtime: static
+    plan: free
+    buildCommand: cd react-frontend && npm install && npm run build
+    staticPublishPath: react-frontend/dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      # Set this to your actual backend URL after backend is deployed
+      - key: VITE_API_BASE_URL
+        sync: false
+        value: https://telemetry-rush-api.onrender.com
+

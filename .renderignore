@@ -1,0 +1,25 @@
+# Files to ignore during Render deployment
+node_modules/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.env
+.venv
+.git/
+.gitignore
+*.md
+README.md
+DEPLOY.md
+
+# Frontend build artifacts (only needed in frontend service)
+react-frontend/node_modules/
+react-frontend/dist/
+react-frontend/.vite/
+
+# Keep logs folder (contains data files)
+!fastapi-server/logs/
+
