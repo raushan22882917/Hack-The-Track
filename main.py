@@ -4,14 +4,13 @@ All services consolidated into one FastAPI application running on port 8000
 
 Features:
 - Server-Sent Events (SSE) for real-time data streaming
-- WebSocket support (alternative)
-- REST API endpoints
+- REST API endpoints for controls and data access
 - Telemetry, Endurance, and Leaderboard services
 - Telemetry preprocessing (converts raw telemetry data to per-vehicle CSVs)
 - All running on a single port (8000)
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import asyncio
@@ -32,7 +31,7 @@ import warnings
 import bisect
 import concurrent.futures
 
-# Suppress WebSocket send exception warnings from uvicorn
+# Suppress uvicorn warnings
 logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
 logging.getLogger("fastapi").setLevel(logging.WARNING)
 
@@ -74,10 +73,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# WebSocket connection pools
-telemetry_connections: List[WebSocket] = []
-endurance_connections: List[WebSocket] = []
-leaderboard_connections: List[WebSocket] = []
+# Connection tracking removed - using SSE instead of WebSocket
 
 # Data cache for REST API
 telemetry_cache: Dict = {}
@@ -632,24 +628,7 @@ async def telemetry_broadcast_loop():
             data = json.dumps(msg)
             telemetry_cache = msg
             
-            # Send to all connected WebSocket clients
-            disconnected = []
-            for ws in telemetry_connections.copy():
-                try:
-                    # Try to send - FastAPI will raise exception if disconnected
-                    await ws.send_text(data)
-                except (WebSocketDisconnect, RuntimeError, ConnectionError, OSError, Exception) as e:
-                    # Silently handle disconnected clients - don't log connection errors
-                    error_str = str(e).lower()
-                    if "connection" not in error_str and "socket" not in error_str and "send" not in error_str:
-                        # Only log non-connection errors
-                        pass
-                    disconnected.append(ws)
-            
-            # Remove disconnected clients
-            for ws in disconnected:
-                if ws in telemetry_connections:
-                    telemetry_connections.remove(ws)
+            # Data is sent via SSE streams (no WebSocket connections to manage)
 
         # End condition
         if (not telemetry_pending_rows and not telemetry_is_reversed) or (not to_emit and telemetry_is_reversed):
@@ -658,13 +637,7 @@ async def telemetry_broadcast_loop():
                 "type": "telemetry_end",
                 "timestamp": sim_time.isoformat()
             }
-            data = json.dumps(end_msg)
-            for ws in telemetry_connections.copy():
-                try:
-                    await ws.send_text(data)
-                except (WebSocketDisconnect, RuntimeError, ConnectionError, OSError, Exception):
-                    # Silently ignore disconnected clients
-                    pass
+            # End message is sent via SSE stream (no WebSocket connections to manage)
             telemetry_is_paused = True
             telemetry_master_start_time = None
 
@@ -746,8 +719,7 @@ async def endurance_broadcast_loop():
     try:
         # Use itertuples() instead of iterrows() for 10-100x speedup
         for row in endurance_df.itertuples():
-            # Always process data (for both WebSocket and SSE)
-            # if not endurance_connections:
+            # Always process data for SSE streams
             #     await asyncio.sleep(0.1)
             #     continue
 
@@ -771,23 +743,7 @@ async def endurance_broadcast_loop():
                 data = json.dumps(msg)
                 endurance_cache.append(msg)
                 
-                # Send to all connected WebSocket clients
-                disconnected = []
-                for ws in endurance_connections.copy():
-                    try:
-                        await ws.send_text(data)
-                    except (WebSocketDisconnect, RuntimeError, ConnectionError, OSError, Exception) as e:
-                        # Silently handle disconnected clients - don't log connection errors
-                        error_str = str(e).lower()
-                        if "connection" not in error_str and "socket" not in error_str and "send" not in error_str:
-                            # Only log non-connection errors
-                            pass
-                        disconnected.append(ws)
-                
-                # Remove disconnected clients
-                for ws in disconnected:
-                    if ws in endurance_connections:
-                        endurance_connections.remove(ws)
+                # Data is sent via SSE streams (no WebSocket connections to manage)
 
                 await asyncio.sleep(wait)
             except Exception as e:
@@ -824,8 +780,7 @@ async def leaderboard_broadcast_loop():
 
     try:
         for row in leaderboard_df.itertuples():
-            # Always process data (for both WebSocket and SSE)
-            # if not leaderboard_connections:
+            # Always process data for SSE streams
             #     await asyncio.sleep(0.1)
             #     continue
 
@@ -854,23 +809,7 @@ async def leaderboard_broadcast_loop():
                 else:
                     leaderboard_cache.append(msg)
                 
-                # Send to all connected WebSocket clients
-                disconnected = []
-                for ws in leaderboard_connections.copy():
-                    try:
-                        await ws.send_text(data)
-                    except (WebSocketDisconnect, RuntimeError, ConnectionError, OSError, Exception) as e:
-                        # Silently handle disconnected clients - don't log connection errors
-                        error_str = str(e).lower()
-                        if "connection" not in error_str and "socket" not in error_str and "send" not in error_str:
-                            # Only log non-connection errors
-                            pass
-                        disconnected.append(ws)
-                
-                # Remove disconnected clients
-                for ws in disconnected:
-                    if ws in leaderboard_connections:
-                        leaderboard_connections.remove(ws)
+                # Data is sent via SSE streams (no WebSocket connections to manage)
 
                 await asyncio.sleep(wait)
             except Exception as e:
@@ -896,10 +835,10 @@ async def root():
         "message": "Telemetry Rush API - Integrated (All on Port 8000)",
         "version": "2.0.0",
         "endpoints": {
-            "websockets": {
-                "telemetry": "/ws/telemetry",
-                "endurance": "/ws/endurance",
-                "leaderboard": "/ws/leaderboard"
+            "sse": {
+                "telemetry": "/sse/telemetry",
+                "endurance": "/sse/endurance",
+                "leaderboard": "/sse/leaderboard"
             },
             "rest": {
                 "telemetry": "/api/telemetry",
@@ -919,10 +858,10 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "connections": {
-            "telemetry": len(telemetry_connections),
-            "endurance": len(endurance_connections),
-            "leaderboard": len(leaderboard_connections)
+        "data_loaded": {
+            "telemetry": telemetry_data_loaded,
+            "endurance": endurance_data_loaded,
+            "leaderboard": leaderboard_data_loaded
         }
     }
 
@@ -940,7 +879,7 @@ async def get_telemetry():
             "row_count": len(telemetry_rows),
             "has_data": True,
             "paused": telemetry_is_paused,
-            "suggestion": "Connect to WebSocket or start playback to receive telemetry frames"
+            "suggestion": "Connect to SSE /sse/telemetry or use REST /api/control to start playback"
         }
     
     return {
@@ -973,7 +912,7 @@ async def get_leaderboard():
             "count": 0,
             "message": "No leaderboard entries in cache yet",
             "has_data": True,
-            "suggestion": "Connect to WebSocket /ws/leaderboard to receive entries"
+            "suggestion": "Connect to SSE /sse/leaderboard to receive entries"
         }
     
     return {"leaderboard": leaderboard_cache, "count": len(leaderboard_cache)}
@@ -1218,194 +1157,6 @@ async def sse_leaderboard():
     )
 
 
-# ==================== WEBSOCKET ENDPOINTS ====================
-
-@app.websocket("/ws/telemetry")
-async def websocket_telemetry(websocket: WebSocket):
-    """WebSocket endpoint for telemetry data"""
-    global telemetry_broadcast_task, telemetry_rows, telemetry_is_paused
-    
-    try:
-        await websocket.accept()
-        telemetry_connections.append(websocket)
-        print(f"✅ Client connected to telemetry WebSocket (total: {len(telemetry_connections)})")
-    except Exception as e:
-        print(f"❌ Failed to accept WebSocket connection: {e}")
-        return
-    
-    # Start broadcast loop if not already running
-    if telemetry_broadcast_task is None or telemetry_broadcast_task.done():
-        telemetry_broadcast_task = asyncio.create_task(telemetry_broadcast_loop())
-        # Wait a moment for data to load
-        await asyncio.sleep(0.5)
-    
-    # Keepalive ping task to prevent connection timeout
-    async def keepalive_ping():
-        """Send periodic ping to keep WebSocket connection alive"""
-        while websocket in telemetry_connections:
-            try:
-                await asyncio.sleep(30)  # Ping every 30 seconds
-                if websocket in telemetry_connections:
-                    await websocket.send_json({"type": "ping", "timestamp": datetime.now().isoformat()})
-            except (WebSocketDisconnect, RuntimeError, ConnectionError, OSError):
-                break
-            except Exception:
-                # Ignore other errors, connection will be cleaned up
-                break
-    
-    ping_task = asyncio.create_task(keepalive_ping())
-    
-    # Send initial connection message with current state
-    try:
-        has_data = len(telemetry_rows) > 0
-        initial_msg = {
-            "type": "connected",
-            "message": "Telemetry WebSocket connected",
-            "paused": telemetry_is_paused,
-            "has_data": has_data,
-            "row_count": len(telemetry_rows)
-        }
-        await websocket.send_text(json.dumps(initial_msg))
-    except Exception as e:
-        # If we can't send initial message, connection might be broken
-        print(f"⚠️ Failed to send initial message to WebSocket client: {e}")
-    
-    try:
-        while True:
-            try:
-                data = await websocket.receive_text()
-                try:
-                    msg = json.loads(data)
-                    if msg.get("type") == "control":
-                        await process_telemetry_control(msg)
-                        # Send acknowledgment
-                        try:
-                            await websocket.send_text(json.dumps({
-                                "type": "control_ack",
-                                "cmd": msg.get("cmd"),
-                                "status": "ok"
-                            }))
-                        except Exception:
-                            pass  # Don't fail if we can't send ack
-                    elif msg.get("type") == "pong":
-                        # Client responded to ping - connection is alive
-                        pass
-                except json.JSONDecodeError:
-                    print(f"⚠️ Invalid JSON received from WebSocket client: {data}")
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                error_str = str(e).lower()
-                if "connection" not in error_str and "socket" not in error_str:
-                    print(f"⚠️ WebSocket receive error: {e}")
-                break
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        print(f"⚠️ WebSocket error: {e}")
-    finally:
-        ping_task.cancel()  # Stop keepalive ping
-        if websocket in telemetry_connections:
-            telemetry_connections.remove(websocket)
-        print(f"Client disconnected from telemetry WebSocket (total: {len(telemetry_connections)})")
-
-
-@app.websocket("/ws/endurance")
-async def websocket_endurance(websocket: WebSocket):
-    """WebSocket endpoint for endurance/lap event data"""
-    global endurance_broadcast_task
-    
-    try:
-        await websocket.accept()
-        endurance_connections.append(websocket)
-        print(f"✅ Client connected to endurance WebSocket (total: {len(endurance_connections)})")
-    except Exception as e:
-        print(f"❌ Failed to accept WebSocket connection: {e}")
-        return
-        
-        # Start broadcast loop if not already running
-        if endurance_broadcast_task is None or endurance_broadcast_task.done():
-            endurance_broadcast_task = asyncio.create_task(endurance_broadcast_loop())
-        
-        # Send initial connection message
-        try:
-            initial_msg = {
-                "type": "connected",
-                "message": "Endurance WebSocket connected"
-            }
-            await websocket.send_text(json.dumps(initial_msg))
-        except Exception:
-            pass  # Don't fail if we can't send initial message
-        
-        try:
-            while True:
-                try:
-                    await websocket.receive_text()
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "connection" not in error_str and "socket" not in error_str:
-                        print(f"⚠️ Endurance WebSocket receive error: {e}")
-                    break
-        except WebSocketDisconnect:
-            pass
-    except Exception as e:
-        print(f"⚠️ Endurance WebSocket error: {e}")
-    finally:
-        if websocket in endurance_connections:
-            endurance_connections.remove(websocket)
-        print(f"Client disconnected from endurance WebSocket (total: {len(endurance_connections)})")
-
-
-@app.websocket("/ws/leaderboard")
-async def websocket_leaderboard(websocket: WebSocket):
-    """WebSocket endpoint for leaderboard data"""
-    global leaderboard_broadcast_task
-    
-    try:
-        await websocket.accept()
-        leaderboard_connections.append(websocket)
-        print(f"✅ Client connected to leaderboard WebSocket (total: {len(leaderboard_connections)})")
-    except Exception as e:
-        print(f"❌ Failed to accept WebSocket connection: {e}")
-        return
-        
-        # Start broadcast loop if not already running
-        if leaderboard_broadcast_task is None or leaderboard_broadcast_task.done():
-            leaderboard_broadcast_task = asyncio.create_task(leaderboard_broadcast_loop())
-        
-        # Send initial connection message
-        try:
-            initial_msg = {
-                "type": "connected",
-                "message": "Leaderboard WebSocket connected"
-            }
-            await websocket.send_text(json.dumps(initial_msg))
-        except Exception:
-            pass  # Don't fail if we can't send initial message
-        
-        try:
-            while True:
-                try:
-                    await websocket.receive_text()
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "connection" not in error_str and "socket" not in error_str:
-                        print(f"⚠️ Leaderboard WebSocket receive error: {e}")
-                    break
-        except WebSocketDisconnect:
-            pass
-    except Exception as e:
-        print(f"⚠️ Leaderboard WebSocket error: {e}")
-    finally:
-        if websocket in leaderboard_connections:
-            leaderboard_connections.remove(websocket)
-        print(f"Client disconnected from leaderboard WebSocket (total: {len(leaderboard_connections)})")
-
-
 # ==================== STARTUP/SHUTDOWN ====================
 
 @app.on_event("startup")
@@ -1423,11 +1174,7 @@ async def startup_event():
     asyncio.create_task(load_leaderboard_data())
     
     print("✅ Server is ready and listening (data loading in background)")
-    print("\n✅ WebSocket Endpoints (Primary - Real-time bidirectional):")
-    print("   - ws://localhost:8000/ws/telemetry")
-    print("   - ws://localhost:8000/ws/endurance")
-    print("   - ws://localhost:8000/ws/leaderboard")
-    print("\n✅ Server-Sent Events (SSE) - Alternative:")
+    print("\n✅ Server-Sent Events (SSE) - Real-time streaming:")
     print("   - http://127.0.0.1:8000/sse/telemetry")
     print("   - http://127.0.0.1:8000/sse/endurance")
     print("   - http://127.0.0.1:8000/sse/leaderboard")
