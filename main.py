@@ -10,8 +10,9 @@ Features:
 - All running on a single port (8000)
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import asyncio
 import json
 from typing import Dict, List, Optional
@@ -63,14 +64,47 @@ if sys.platform == 'win32':
 
 app = FastAPI(title="Telemetry Rush API", version="2.0.0")
 
-# CORS middleware
+# CORS middleware - must be added before exception handlers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Exception handler to ensure CORS headers are added to error responses
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Ensure CORS headers are added to HTTP error responses"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Ensure CORS headers are added to error responses"""
+    import traceback
+    error_detail = str(exc)
+    print(f"⚠️ Unhandled exception: {error_detail}")
+    traceback.print_exc()
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_detail, "error": "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 # Connection tracking removed - using pure REST API with polling
 
@@ -767,7 +801,10 @@ async def leaderboard_broadcast_loop():
 
     # Ensure data is loaded
     if not leaderboard_data_loaded:
-        await load_leaderboard_data()
+        success = await load_leaderboard_data()
+        if not success:
+            print("⚠️ WARNING: Failed to load leaderboard data")
+            return
     
     if leaderboard_df is None or len(leaderboard_df) == 0:
         print("⚠️ WARNING: No leaderboard data available")
@@ -866,29 +903,38 @@ async def get_telemetry():
     """Get latest telemetry data - Poll this endpoint for updates"""
     global telemetry_broadcast_task
     
-    # Start broadcast loop if not already running
-    if telemetry_broadcast_task is None or telemetry_broadcast_task.done():
-        telemetry_broadcast_task = asyncio.create_task(telemetry_broadcast_loop())
-        print("Started telemetry broadcast loop for REST API")
-    
-    if telemetry_cache:
-        return telemetry_cache
-    
-    # Check if data is loaded but not started
-    if telemetry_data_loaded and len(telemetry_rows) > 0:
+    try:
+        # Start broadcast loop if not already running
+        if telemetry_broadcast_task is None or telemetry_broadcast_task.done():
+            try:
+                telemetry_broadcast_task = asyncio.create_task(telemetry_broadcast_loop())
+                print("Started telemetry broadcast loop for REST API")
+            except Exception as e:
+                print(f"⚠️ Error starting telemetry broadcast loop: {e}")
+        
+        if telemetry_cache:
+            return telemetry_cache
+        
+        # Check if data is loaded but not started
+        if telemetry_data_loaded and len(telemetry_rows) > 0:
+            return {
+                "message": "Telemetry data loaded but playback not started",
+                "row_count": len(telemetry_rows),
+                "has_data": True,
+                "paused": telemetry_is_paused,
+                "suggestion": "Poll /api/telemetry for updates. Use /api/control to start playback."
+            }
+        
         return {
-            "message": "Telemetry data loaded but playback not started",
-            "row_count": len(telemetry_rows),
-            "has_data": True,
-            "paused": telemetry_is_paused,
-            "suggestion": "Poll /api/telemetry for updates. Use /api/control to start playback."
+            "message": "No telemetry data available",
+            "has_data": False,
+            "suggestion": "Ensure CSV files exist in logs/vehicles/ and data has been loaded"
         }
-    
-    return {
-        "message": "No telemetry data available",
-        "has_data": False,
-        "suggestion": "Ensure CSV files exist in logs/vehicles/ and data has been loaded"
-    }
+    except Exception as e:
+        print(f"⚠️ Error in get_telemetry endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error retrieving telemetry: {str(e)}")
 
 
 @app.get("/api/endurance")
@@ -896,12 +942,21 @@ async def get_endurance():
     """Get endurance/lap event data - Poll this endpoint for updates"""
     global endurance_broadcast_task
     
-    # Start broadcast loop if not already running
-    if endurance_broadcast_task is None or endurance_broadcast_task.done():
-        endurance_broadcast_task = asyncio.create_task(endurance_broadcast_loop())
-        print("Started endurance broadcast loop for REST API")
-    
-    return {"events": endurance_cache, "count": len(endurance_cache)}
+    try:
+        # Start broadcast loop if not already running
+        if endurance_broadcast_task is None or endurance_broadcast_task.done():
+            try:
+                endurance_broadcast_task = asyncio.create_task(endurance_broadcast_loop())
+                print("Started endurance broadcast loop for REST API")
+            except Exception as e:
+                print(f"⚠️ Error starting endurance broadcast loop: {e}")
+        
+        return {"events": endurance_cache, "count": len(endurance_cache)}
+    except Exception as e:
+        print(f"⚠️ Error in get_endurance endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error retrieving endurance data: {str(e)}")
 
 
 @app.get("/api/leaderboard")
@@ -909,29 +964,38 @@ async def get_leaderboard():
     """Get leaderboard data - Poll this endpoint for updates"""
     global leaderboard_broadcast_task
     
-    # Start broadcast loop if not already running
-    if leaderboard_broadcast_task is None or leaderboard_broadcast_task.done():
-        leaderboard_broadcast_task = asyncio.create_task(leaderboard_broadcast_loop())
-        print("Started leaderboard broadcast loop for REST API")
-    
-    if not leaderboard_data_loaded:
-        return {
-            "leaderboard": [],
-            "count": 0,
-            "message": "Leaderboard data not loaded",
-            "suggestion": "Ensure R1_leaderboard.csv exists in logs/ directory"
-        }
-    
-    if len(leaderboard_cache) == 0:
-        return {
-            "leaderboard": [],
-            "count": 0,
-            "message": "No leaderboard entries in cache yet",
-            "has_data": True,
-            "suggestion": "Poll /api/leaderboard for updates"
-        }
-    
-    return {"leaderboard": leaderboard_cache, "count": len(leaderboard_cache)}
+    try:
+        # Start broadcast loop if not already running
+        if leaderboard_broadcast_task is None or leaderboard_broadcast_task.done():
+            try:
+                leaderboard_broadcast_task = asyncio.create_task(leaderboard_broadcast_loop())
+                print("Started leaderboard broadcast loop for REST API")
+            except Exception as e:
+                print(f"⚠️ Error starting leaderboard broadcast loop: {e}")
+        
+        if not leaderboard_data_loaded:
+            return {
+                "leaderboard": [],
+                "count": 0,
+                "message": "Leaderboard data not loaded",
+                "suggestion": "Ensure R1_leaderboard.csv exists in logs/ directory"
+            }
+        
+        if len(leaderboard_cache) == 0:
+            return {
+                "leaderboard": [],
+                "count": 0,
+                "message": "No leaderboard entries in cache yet",
+                "has_data": True,
+                "suggestion": "Poll /api/leaderboard for updates"
+            }
+        
+        return {"leaderboard": leaderboard_cache, "count": len(leaderboard_cache)}
+    except Exception as e:
+        print(f"⚠️ Error in get_leaderboard endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error retrieving leaderboard: {str(e)}")
 
 
 @app.post("/api/control")
