@@ -11,7 +11,18 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
+# Verify main.py exists
+if [ ! -f "main.py" ]; then
+    echo "Error: main.py not found in current directory"
+    exit 1
+fi
+
 # Start uvicorn server
 echo "Starting server on port $PORT..."
-exec uvicorn main:app --host 0.0.0.0 --port "$PORT"
+echo "Working directory: $(pwd)"
+echo "Python version: $(python --version)"
+echo "Uvicorn version: $(uvicorn --version 2>&1 || echo 'not found')"
+
+# Use exec to replace shell process with uvicorn
+exec uvicorn main:app --host 0.0.0.0 --port "$PORT" --log-level info
 

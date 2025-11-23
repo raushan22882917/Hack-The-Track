@@ -1380,21 +1380,19 @@ async def websocket_leaderboard(websocket: WebSocket):
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize on startup - Pre-load all data for fast access"""
+    """Initialize on startup - Pre-load all data for fast access (non-blocking)"""
     print("\n" + "="*60)
     print("Telemetry Rush - FastAPI Server (Integrated)")
-    print("All services running on port 8000")
     print("="*60)
     
-    # Pre-load all data on startup for fast access
-    print("\n🚀 Pre-loading data for fast access...")
-    await asyncio.gather(
-        load_telemetry_data(),
-        load_endurance_data(),
-        load_leaderboard_data(),
-        return_exceptions=True
-    )
+    # Start data loading in background (non-blocking) so server can start immediately
+    # This is critical for Cloud Run which has startup timeout requirements
+    print("\n🚀 Starting data pre-loading in background (non-blocking)...")
+    asyncio.create_task(load_telemetry_data())
+    asyncio.create_task(load_endurance_data())
+    asyncio.create_task(load_leaderboard_data())
     
+    print("✅ Server is ready and listening (data loading in background)")
     print("\n✅ WebSocket Endpoints (Primary - Real-time bidirectional):")
     print("   - ws://localhost:8000/ws/telemetry")
     print("   - ws://localhost:8000/ws/endurance")
